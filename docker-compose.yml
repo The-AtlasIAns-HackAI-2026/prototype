@@ -1,0 +1,32 @@
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7331:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./prompts:/app/prompts:ro
+    env_file:
+      - path: .env
+        required: false
+  livekit-agent:
+    build: ./livekit_agent
+    restart: unless-stopped
+    command: ["python", "agent.py", "start", "--log-level=info"]
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - ./config:/app/config:ro
+    env_file:
+      - path: .env.livekit
+        required: false
+      - path: .env
+        required: false
+    environment:
+      LIVEKIT_AGENT_NAME: moulcyber-live-agent
+      LIVEKIT_AGENT_PORT: "8081"
+      GEMINI_LIVE_MODEL: gemini-3.1-flash-live-preview
+      GEMINI_THINKING_LEVEL: minimal
+      MCP_SERVERS_FILE: /app/config/mcp.servers.json

@@ -1,0 +1,2 @@
+livekit-agents[google,mcp]~=1.5
+python-dotenv==1.2.2

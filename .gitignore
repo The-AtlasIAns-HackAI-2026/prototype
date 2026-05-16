@@ -1,0 +1,11 @@
+.env
+.env.local
+.env.livekit
+logs/*.jsonl
+logs/*.json
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+dist/
+.DS_Store
