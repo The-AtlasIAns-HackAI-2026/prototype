@@ -243,7 +243,7 @@ You are a first-line Moroccan public-services hotline, not a lawyer and not a co
 Route each caller to one expert desk before answering. Use route_hotline_issue when the caller asks about bureaucracy, complaints, work, consumer issues, courts, police, documents, or public services.
 Keep phone answers short. Ask only the next missing question. Do not invent law, deadlines, offices, or document requirements.
 For high-risk legal, safety, police, court, eviction, violence, or minor-related matters, recommend a qualified human professional or emergency help.
-Never submit anything unless the caller clearly consents. For this prototype, complaint submission is mock-only.
+For Chikaya intake, ask only first name, last name, and topic; caller phone should come from call metadata. Never submit anything unless the caller clearly consents. For this prototype, complaint submission is mock-only.
 
 AVAILABLE EXPERT DESKS:
 {expert_lines}
@@ -251,11 +251,12 @@ AVAILABLE EXPERT DESKS:
 
 
 def build_complaint_packet(payload: dict[str, Any]) -> dict[str, Any]:
-    subject = str(payload.get("subject") or "").strip()
-    description = str(payload.get("description") or "").strip()
-    desired_resolution = str(payload.get("desired_resolution") or "").strip()
-    city = str(payload.get("city") or "").strip()
-    category = str(payload.get("category") or "administrative").strip()
+    normalized = normalize_complaint_payload(payload)
+    subject = str(normalized.get("subject") or "").strip()
+    description = str(normalized.get("description") or "").strip()
+    desired_resolution = str(normalized.get("desired_resolution") or "").strip()
+    city = str(normalized.get("city") or "").strip()
+    category = str(normalized.get("category") or "legal or administrative complaint").strip()
 
     summary_parts = [
         f"Category: {category}",
@@ -274,24 +275,19 @@ def build_complaint_packet(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 async def submit_mock_chikaya(payload: dict[str, Any]) -> dict[str, Any]:
-    required = [
-        "citizen_name",
-        "phone",
-        "city",
-        "category",
-        "subject",
-        "description",
-        "desired_resolution",
-    ]
-    missing = [field for field in required if not str(payload.get(field) or "").strip()]
+    normalized = normalize_complaint_payload(payload)
+    required = ["first_name", "last_name", "phone", "topic"]
+    missing = [field for field in required if not str(normalized.get(field) or "").strip()]
     if missing:
         return {
             "submitted": False,
             "mode": "mock",
             "missing_fields": missing,
-            "steps": ["Mock portal not opened because required fields are missing."],
+            "steps": [
+                "Mock portal not opened because first name, last name, caller phone, and topic are required."
+            ],
         }
-    if payload.get("consent") is not True:
+    if normalized.get("consent") is not True:
         return {
             "submitted": False,
             "mode": "mock",
@@ -299,20 +295,22 @@ async def submit_mock_chikaya(payload: dict[str, Any]) -> dict[str, Any]:
             "steps": ["Mock portal not opened because explicit consent is required."],
         }
 
-    packet = build_complaint_packet(payload)
-    receipt_id = _receipt_id(payload)
+    packet = build_complaint_packet(normalized)
+    receipt_id = _receipt_id(normalized)
     event = {
         "receipt_id": receipt_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "mode": "mock",
-        "citizen_name": payload.get("citizen_name"),
-        "phone": payload.get("phone"),
-        "city": payload.get("city"),
+        "citizen_name": normalized.get("citizen_name"),
+        "phone": normalized.get("phone"),
+        "city": normalized.get("city"),
         "category": packet["category"],
         "subject": packet["subject"],
         "summary": packet["summary"],
         "evidence": packet["evidence"],
         "human_review_required": packet["human_review_required"],
+        "channel": normalized.get("channel"),
+        "call_id": normalized.get("call_id"),
     }
 
     await asyncio.to_thread(_append_submission, event)
@@ -329,6 +327,44 @@ async def submit_mock_chikaya(payload: dict[str, Any]) -> dict[str, Any]:
             "Submitted mock complaint and stored audit receipt.",
         ],
     }
+
+
+def normalize_complaint_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    first_name = str(payload.get("first_name") or "").strip()
+    last_name = str(payload.get("last_name") or "").strip()
+    citizen_name = str(payload.get("citizen_name") or "").strip()
+    if not citizen_name:
+        citizen_name = " ".join(part for part in (first_name, last_name) if part).strip()
+    if citizen_name and (not first_name or not last_name):
+        parts = citizen_name.split()
+        first_name = first_name or (parts[0] if parts else "")
+        last_name = last_name or (" ".join(parts[1:]) if len(parts) > 1 else "")
+
+    topic = str(payload.get("topic") or payload.get("subject") or payload.get("description") or "").strip()
+    subject = str(payload.get("subject") or topic[:160] or "Khadamati complaint").strip()
+    description = str(payload.get("description") or topic).strip()
+    desired_resolution = str(
+        payload.get("desired_resolution")
+        or "Request a clear written answer and guidance about the next administrative step."
+    ).strip()
+    phone = str(payload.get("phone") or payload.get("caller_phone") or "").strip()
+
+    normalized = dict(payload)
+    normalized.update(
+        {
+            "first_name": first_name,
+            "last_name": last_name,
+            "citizen_name": citizen_name,
+            "phone": phone,
+            "topic": topic,
+            "subject": subject,
+            "description": description,
+            "desired_resolution": desired_resolution,
+            "city": str(payload.get("city") or "not provided").strip(),
+            "category": str(payload.get("category") or "legal or administrative complaint").strip(),
+        }
+    )
+    return normalized
 
 
 async def start_oral_approval(payload: dict[str, Any]) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 {
   "trunk": {
-    "name": "moulcyber-twilio-inbound",
+    "name": "khadamati-twilio-inbound",
     "numbers": ["+17754060061"]
   }
 }

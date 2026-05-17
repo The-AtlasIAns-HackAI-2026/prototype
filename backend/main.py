@@ -68,7 +68,14 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-app = FastAPI(title="Moulcyber API", version="0.1.0")
+app = FastAPI(title="Khadamati API", version="0.1.0")
+LEGAL_RAG_SECTORS = {
+    "family_law",
+    "criminal_law",
+    "civil_procedure",
+    "constitutional_law",
+    "public_finance",
+}
 
 origins = [origin.strip() for origin in settings.cors_allow_origins.split(",") if origin.strip()]
 app.add_middleware(
@@ -105,19 +112,30 @@ class HotlineTriageRequest(BaseModel):
     language: str = "darija"
     city: str | None = Field(default=None, max_length=120)
     provided_fields: dict[str, Any] = Field(default_factory=dict)
+    channel: str = Field(default="web", max_length=40)
+    call_id: str | None = Field(default=None, max_length=120)
+    caller_phone: str | None = Field(default=None, max_length=40)
+    trace_id: str | None = Field(default=None, max_length=120)
 
 
 class MockChikayaSubmissionRequest(BaseModel):
-    citizen_name: str = Field(..., min_length=2, max_length=120)
-    phone: str = Field(..., min_length=6, max_length=40)
-    city: str = Field(..., min_length=2, max_length=120)
-    category: str = Field(..., min_length=2, max_length=120)
-    subject: str = Field(..., min_length=4, max_length=180)
-    description: str = Field(..., min_length=12, max_length=4000)
-    desired_resolution: str = Field(..., min_length=4, max_length=1000)
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    topic: str | None = Field(default=None, max_length=1000)
+    citizen_name: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    caller_phone: str | None = Field(default=None, max_length=40)
+    city: str = Field(default="not provided", max_length=120)
+    category: str = Field(default="legal or administrative complaint", max_length=120)
+    subject: str | None = Field(default=None, max_length=180)
+    description: str | None = Field(default=None, max_length=4000)
+    desired_resolution: str | None = Field(default=None, max_length=1000)
     evidence: list[str] = Field(default_factory=list, max_length=12)
     consent: bool = False
     source: Literal["mock-website", "voice-agent", "api"] = "api"
+    channel: str = Field(default="web", max_length=40)
+    call_id: str | None = Field(default=None, max_length=120)
+    trace_id: str | None = Field(default=None, max_length=120)
 
 
 class LegalRAGRequest(BaseModel):
@@ -126,16 +144,55 @@ class LegalRAGRequest(BaseModel):
     sector: str | None = Field(default=None, max_length=80)
     top_k: int = Field(default=4, ge=1, le=8)
     use_llm: bool = True
+    channel: str = Field(default="web", max_length=40)
+    call_id: str | None = Field(default=None, max_length=120)
+    caller_phone: str | None = Field(default=None, max_length=40)
+    trace_id: str | None = Field(default=None, max_length=120)
+
+
+class CasePacketRequest(BaseModel):
+    topic: str = Field(..., min_length=2, max_length=3000)
+    language: str = "darija"
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    city: str | None = Field(default=None, max_length=120)
+    channel: str = Field(default="web", max_length=40)
+    call_id: str | None = Field(default=None, max_length=120)
+    caller_phone: str | None = Field(default=None, max_length=40)
+    trace_id: str | None = Field(default=None, max_length=120)
 
 
 class OralApprovalStartRequest(BaseModel):
     action: str = Field(..., min_length=2, max_length=120)
     summary: str = Field(..., min_length=4, max_length=1000)
+    channel: str = Field(default="web", max_length=40)
+    call_id: str | None = Field(default=None, max_length=120)
+    caller_phone: str | None = Field(default=None, max_length=40)
+    trace_id: str | None = Field(default=None, max_length=120)
 
 
 class OralApprovalConfirmRequest(BaseModel):
     approval_id: str = Field(..., min_length=4, max_length=80)
     spoken_text: str = Field(..., min_length=1, max_length=500)
+    channel: str = Field(default="web", max_length=40)
+    call_id: str | None = Field(default=None, max_length=120)
+    caller_phone: str | None = Field(default=None, max_length=40)
+    trace_id: str | None = Field(default=None, max_length=120)
+
+
+class CallEventRequest(BaseModel):
+    event_type: str = Field(..., min_length=2, max_length=100)
+    channel: str = Field(default="voice-agent", max_length=40)
+    call_id: str | None = Field(default=None, max_length=120)
+    caller_phone: str | None = Field(default=None, max_length=40)
+    trace_id: str | None = Field(default=None, max_length=120)
+    room_name: str | None = Field(default=None, max_length=160)
+    participant_identity: str | None = Field(default=None, max_length=160)
+    tool: str | None = Field(default=None, max_length=100)
+    route: str | None = Field(default=None, max_length=100)
+    article: str | None = Field(default=None, max_length=100)
+    latency_ms: float | None = None
+    success: bool = True
 
 
 class MCPToolRunRequest(BaseModel):
@@ -258,6 +315,17 @@ def _calls_ready() -> bool:
     return _elevenlabs_ready()
 
 
+def _event_metadata(payload: Any | None = None, **extra: Any) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    if payload is not None:
+        for key in ("channel", "call_id", "caller_phone", "trace_id", "source"):
+            value = getattr(payload, key, None)
+            if value:
+                metadata[key] = value
+    metadata.update({key: value for key, value in extra.items() if value not in (None, "")})
+    return metadata
+
+
 def _request_url_for_twilio(request: Request) -> str:
     forwarded_proto = request.headers.get("x-forwarded-proto")
     forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
@@ -302,7 +370,7 @@ def _call_overrides(language_code: str, direction: str) -> dict[str, Any]:
         "type": "conversation_initiation_client_data",
         "dynamic_variables": {
             "language": language.code,
-            "service_name": "Moulcyber",
+            "service_name": "Khadamati",
             "call_direction": direction,
         },
         "conversation_config_override": {
@@ -393,7 +461,7 @@ async def _call_bridge_twiml(
 async def health() -> dict[str, Any]:
     return {
         "status": "ok",
-        "service": "moulcyber",
+        "service": "khadamati",
         "twilio_number": settings.twilio_phone_number,
         "voice_provider": settings.voice_provider,
         "calls_ready": _calls_ready(),
@@ -441,12 +509,68 @@ async def mcp_tools() -> dict[str, Any]:
 
 @app.post("/api/mcp-tools/{tool_name}/run")
 async def run_mcp_tool(tool_name: str, request: MCPToolRunRequest) -> dict[str, Any]:
+    started = time.perf_counter()
     try:
-        return await registry.run(tool_name, request.payload)
+        result = await registry.run(tool_name, request.payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
+        await log_event(
+            topic=f"mcp_tool:{tool_name}",
+            language=str(request.payload.get("language") or "darija"),
+            success=False,
+            metadata=_event_metadata(
+                None,
+                channel=str(request.payload.get("channel") or request.payload.get("source") or "api"),
+                call_id=request.payload.get("call_id"),
+                caller_phone=request.payload.get("caller_phone") or request.payload.get("phone"),
+                trace_id=request.payload.get("trace_id"),
+                tool=tool_name,
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
+            ),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await log_event(
+        topic=f"mcp_tool:{tool_name}",
+        language=str(request.payload.get("language") or "darija"),
+        success=True,
+        response_text=str(result.get("answer") or result.get("receipt_id") or result.get("status") or ""),
+        metadata=_event_metadata(
+            None,
+            channel=str(request.payload.get("channel") or request.payload.get("source") or "api"),
+            call_id=request.payload.get("call_id"),
+            caller_phone=request.payload.get("caller_phone") or request.payload.get("phone"),
+            trace_id=request.payload.get("trace_id"),
+            tool=tool_name,
+            route=(result.get("route") or {}).get("sector") if isinstance(result.get("route"), dict) else None,
+            article=((result.get("results") or [{}])[0] or {}).get("primary_article")
+            if isinstance(result.get("results"), list)
+            else None,
+            receipt_id=result.get("receipt_id"),
+            approval_id=result.get("approval_id"),
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        ),
+    )
+    return result
+
+
+@app.post("/api/call-events")
+async def call_event(payload: CallEventRequest) -> dict[str, Any]:
+    event = await log_event(
+        topic=f"call:{payload.event_type}",
+        language="darija",
+        success=payload.success,
+        metadata=_event_metadata(
+            payload,
+            tool=payload.tool,
+            route=payload.route,
+            article=payload.article,
+            room_name=payload.room_name,
+            participant_identity=payload.participant_identity,
+            latency_ms=payload.latency_ms,
+        ),
+    )
+    return {"logged": True, "event": event}
 
 
 @app.get("/api/hotline/experts")
@@ -471,6 +595,11 @@ async def hotline_triage(payload: HotlineTriageRequest) -> dict[str, Any]:
         language=get_language(payload.language).code,
         success=True,
         response_text=result["recommended_action"],
+        metadata=_event_metadata(
+            payload,
+            tool="hotline_route_issue",
+            route=result.get("selected_expert", {}).get("id"),
+        ),
     )
     return result
 
@@ -483,6 +612,11 @@ async def mock_chikaya_submit(payload: MockChikayaSubmissionRequest) -> dict[str
         language="darija",
         success=bool(result.get("submitted")),
         response_text=str(result.get("receipt_id") or result.get("missing_fields") or ""),
+        metadata=_event_metadata(
+            payload,
+            tool="mock_chikaya_submit",
+            receipt_id=result.get("receipt_id"),
+        ),
     )
     return result
 
@@ -502,6 +636,11 @@ async def oral_approval_start(payload: OralApprovalStartRequest) -> dict[str, An
         language="darija",
         success=True,
         response_text=result.get("approval_id"),
+        metadata=_event_metadata(
+            payload,
+            tool="approval_flow_start",
+            approval_id=result.get("approval_id"),
+        ),
     )
     return result
 
@@ -514,6 +653,11 @@ async def oral_approval_confirm(payload: OralApprovalConfirmRequest) -> dict[str
         language="darija",
         success=bool(result.get("approved")),
         response_text=result.get("status"),
+        metadata=_event_metadata(
+            payload,
+            tool="approval_flow_confirm",
+            approval_id=result.get("approval_id"),
+        ),
     )
     return result
 
@@ -569,9 +713,86 @@ async def legal_rag_query(payload: LegalRAGRequest) -> dict[str, Any]:
         language=get_language(payload.language).code,
         success=True,
         response_text=answer or payload.question,
-        metadata={"provider": answer_model},
+        metadata=_event_metadata(
+            payload,
+            provider=answer_model,
+            tool="legal_rag_retrieve",
+            route=(retrieval.get("route") or {}).get("sector"),
+            article=((retrieval.get("results") or [{}])[0] or {}).get("primary_article"),
+            latency_ms=round(total_ms, 2),
+        ),
     )
     return result
+
+
+@app.post("/api/hotline/case-packet")
+async def case_packet(payload: CasePacketRequest) -> dict[str, Any]:
+    started = time.perf_counter()
+    provided = {
+        "city": payload.city,
+        "first_name": payload.first_name,
+        "last_name": payload.last_name,
+        "caller_phone": payload.caller_phone,
+        "topic": payload.topic,
+    }
+    triage = route_issue(
+        message=payload.topic,
+        language=get_language(payload.language).code,
+        provided_fields={key: value for key, value in provided.items() if value},
+    )
+    selected_expert_id = (triage.get("selected_expert") or {}).get("id")
+    retrieval = retrieve_legal_context(
+        question=payload.topic,
+        sector=selected_expert_id if selected_expert_id in LEGAL_RAG_SECTORS else None,
+        top_k=3,
+    )
+    first_source = (retrieval.get("results") or [{}])[0]
+    packet = {
+        "packet_id": f"KHD-PACKET-{int(time.time() * 1000)}",
+        "citizen": {
+            "first_name": payload.first_name,
+            "last_name": payload.last_name,
+            "caller_phone": payload.caller_phone,
+            "city": payload.city,
+        },
+        "topic": payload.topic,
+        "workflow": {
+            "channel": payload.channel,
+            "call_id": payload.call_id,
+            "master_agent": "khadamati_legal_master",
+            "selected_expert": triage.get("selected_expert"),
+            "rag_route": retrieval.get("route"),
+            "a2a_trace": retrieval.get("a2a_trace"),
+        },
+        "legal_anchor": {
+            "primary_article": first_source.get("primary_article"),
+            "article_count": first_source.get("article_count"),
+            "chunk_id": first_source.get("chunk_id"),
+            "pages": [first_source.get("page_start"), first_source.get("page_end")],
+        },
+        "intake": {
+            "missing_fields": triage.get("missing_fields", []),
+            "next_questions": triage.get("next_questions", []),
+            "evidence_checklist": triage.get("evidence_checklist", []),
+            "risk_flags": triage.get("risk_flags", []),
+            "recommended_action": triage.get("recommended_action"),
+        },
+        "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+    }
+    await log_event(
+        topic="case_packet_build",
+        language=get_language(payload.language).code,
+        success=True,
+        response_text=payload.topic,
+        metadata=_event_metadata(
+            payload,
+            tool="case_packet_build",
+            route=(retrieval.get("route") or {}).get("sector"),
+            article=first_source.get("primary_article"),
+            latency_ms=packet["latency_ms"],
+        ),
+    )
+    return packet
 
 
 def _message_text(content: str | list[Any] | None) -> str:
@@ -612,7 +833,7 @@ def _build_custom_llm_prompt(messages: list[OpenAIMessage]) -> tuple[str, str]:
 
 def _chat_completion_payload(answer: str, model: str) -> dict[str, Any]:
     return {
-        "id": f"chatcmpl-moulcyber-{int(time.time() * 1000)}",
+        "id": f"chatcmpl-khadamati-{int(time.time() * 1000)}",
         "object": "chat.completion",
         "created": int(time.time()),
         "model": model,
@@ -665,10 +886,18 @@ def _local_rag_answer(retrieval: dict[str, Any]) -> str:
     chunk_id = first.get("chunk_id", "source inconnue")
     page_start = first.get("page_start", "?")
     page_end = first.get("page_end", "?")
+    primary_article = first.get("primary_article")
+    article_count = int(first.get("article_count") or 0)
+    article_note = ""
+    if primary_article and article_count > 1:
+        article_note = f"Kaynin {article_count} articles/fosoul f had source; l-aqrab l-soual howa {primary_article}. "
+    elif primary_article:
+        article_note = f"L-aqrab source qanouni howa {primary_article}. "
     excerpt = str(first.get("excerpt") or "").strip()
     compact = " ".join(excerpt.split())[:520]
     return (
         f"Route: {route.get('legal_sector', 'Legal RAG')}. "
+        f"{article_note}"
         f"Source {chunk_id}, pages {page_start}-{page_end}. "
         f"{compact} "
         "Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
@@ -676,7 +905,7 @@ def _local_rag_answer(retrieval: dict[str, Any]) -> str:
 
 
 async def _stream_chat_completion(answer: str, model: str):
-    completion_id = f"chatcmpl-moulcyber-{int(time.time() * 1000)}"
+    completion_id = f"chatcmpl-khadamati-{int(time.time() * 1000)}"
     created = int(time.time())
     chunks = [
         {"role": "assistant"},
@@ -762,7 +991,7 @@ async def twilio_inbound(request: Request) -> Response:
         await log_event(topic="twilio_inbound_call", language="darija", success=False)
         fallback = (
             "<Response><Say language=\"fr-FR\">"
-            "Le service Moulcyber n'est pas configure pour le moment."
+            "Le service Khadamati n'est pas configure pour le moment."
             "</Say></Response>"
         )
         if settings.app_env == "production":

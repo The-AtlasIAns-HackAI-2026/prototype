@@ -1,3 +1,14 @@
 {
-  "servers": []
+  "servers": [
+    {
+      "id": "khadamati-hotline",
+      "type": "stdio",
+      "command": "python",
+      "args": ["/app/livekit_agent/mcp_stdio_server.py"],
+      "env": {
+        "HOTLINE_API_BASE_URL": "${HOTLINE_API_BASE_URL}",
+        "HOTLINE_API_TIMEOUT": "${HOTLINE_API_TIMEOUT}"
+      }
+    }
+  ]
 }

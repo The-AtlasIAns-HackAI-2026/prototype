@@ -18,6 +18,10 @@ DEFAULT_RAG_DIR = PROJECT_DIR / "rag_datasets"
 
 ARABIC_RE = re.compile(r"[\u0600-\u06ff]+")
 TOKEN_RE = re.compile(r"[\w\u0600-\u06ff]+", re.UNICODE)
+ARTICLE_RE = re.compile(
+    r"(?:المادة|الفصل)\s*([0-9٠-٩]+(?:\s*[-‐‑–—]\s*[0-9٠-٩]+)?)",
+    re.UNICODE,
+)
 
 SECTOR_HINTS: dict[str, tuple[str, ...]] = {
     "family_law": (
@@ -284,7 +288,7 @@ def retrieve_legal_context(
         ranked = [(0.01, chunk) for chunk in selected.chunks[:top_k]]
 
     results = [
-        _chunk_result(score, chunk)
+        _chunk_result(score, chunk, query_counter)
         for score, chunk in ranked[: max(1, min(top_k, 8))]
     ]
     retrieval_ms = (time.perf_counter() - started) * 1000
@@ -295,7 +299,7 @@ def retrieve_legal_context(
         "results": results,
         "a2a_trace": [
             {
-                "agent": "moulcyber_legal_master",
+                "agent": "khadamati_legal_master",
                 "role": "master_router",
                 "action": "selected_sector",
                 "target": route["agent_id"],
@@ -330,9 +334,50 @@ def _score_chunk(query: Counter[str], chunk_tokens: Counter[str], chunk: dict[st
     return (score / math.sqrt(chunk_len)) * (0.75 + quality)
 
 
-def _chunk_result(score: float, chunk: dict[str, Any]) -> dict[str, Any]:
+def _extract_articles(text: str) -> list[dict[str, Any]]:
+    articles: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for match in ARTICLE_RE.finditer(text):
+        number = " ".join(match.group(1).replace("‐", "-").replace("‑", "-").split())
+        label = f"{match.group(0).split()[0]} {number}"
+        if label in seen:
+            continue
+        seen.add(label)
+        articles.append({"label": label, "offset": match.start()})
+    return articles
+
+
+def _query_anchor(text: str, query: Counter[str]) -> int | None:
+    lowered = text.lower()
+    best: int | None = None
+    for token in query:
+        if len(token) < 4:
+            continue
+        position = lowered.find(token.lower())
+        if position >= 0 and (best is None or position < best):
+            best = position
+    return best
+
+
+def _nearest_article(text: str, query: Counter[str]) -> tuple[str | None, list[str]]:
+    articles = _extract_articles(text)
+    if not articles:
+        return None, []
+    anchor = _query_anchor(text, query)
+    if anchor is None:
+        primary = articles[0]
+    else:
+        primary = min(articles, key=lambda item: abs(int(item["offset"]) - anchor))
+    return str(primary["label"]), [str(item["label"]) for item in articles]
+
+
+def _chunk_result(score: float, chunk: dict[str, Any], query: Counter[str]) -> dict[str, Any]:
     text = str(chunk.get("text") or "").strip()
     excerpt = text[:900] + ("..." if len(text) > 900 else "")
+    primary_article, extracted_articles = _nearest_article(text, query)
+    article_refs = list(dict.fromkeys([*(chunk.get("article_refs") or []), *extracted_articles]))
+    if not primary_article and article_refs:
+        primary_article = str(article_refs[0])
     return {
         "score": round(float(score), 4),
         "chunk_id": chunk.get("chunk_id"),
@@ -343,7 +388,10 @@ def _chunk_result(score: float, chunk: dict[str, Any]) -> dict[str, Any]:
         "source_title_ar": chunk.get("source_title_ar"),
         "page_start": chunk.get("page_start"),
         "page_end": chunk.get("page_end"),
-        "article_refs": chunk.get("article_refs") or [],
+        "article_refs": article_refs,
+        "primary_article": primary_article,
+        "article_count": len(article_refs),
+        "article_notice": "many_articles_nearby" if len(article_refs) > 1 else "",
         "headings": chunk.get("headings") or [],
         "excerpt": excerpt,
     }
@@ -358,6 +406,7 @@ def build_legal_answer_prompt(question: str, retrieval: dict[str, Any]) -> tuple
                     f"Source {index}: {item['chunk_id']}",
                     f"Sector: {item['legal_sector']}",
                     f"Pages: {item['page_start']}-{item['page_end']}",
+                    f"Nearest article: {item.get('primary_article') or 'not detected'}",
                     f"Articles: {', '.join(item['article_refs']) if item['article_refs'] else 'not detected'}",
                     f"Text: {item['excerpt']}",
                 ]
@@ -365,11 +414,13 @@ def build_legal_answer_prompt(question: str, retrieval: dict[str, Any]) -> tuple
         )
 
     system_instruction = """
-You are Moulcyber Legal Hotline, a Moroccan first-line legal information assistant.
+You are Khadamati, a Moroccan first-line legal and bureaucracy hotline assistant.
 Use only the provided retrieved legal context for legal claims.
 Answer in concise Moroccan Darija if the user uses Darija, otherwise use simple French.
+Start with the nearest detected article/fasl/madda when present.
+If several articles are present, say that there are several and name the nearest one first.
 Always include a short safety note that this is legal information, not a final lawyer opinion.
-Mention source chunk IDs and pages compactly.
+Mention article, source chunk IDs, and pages compactly.
 If context is weak or outside scope, say that clearly and ask one next question.
 """.strip()
     prompt = f"Question:\n{question}\n\nRetrieved context:\n\n" + "\n\n".join(context_blocks)

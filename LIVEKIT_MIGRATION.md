@@ -3,7 +3,7 @@
 Main inbound path:
 
 ```text
-Caller -> Twilio +17754060061 -> Twilio Elastic SIP Trunk -> LiveKit SIP -> moulcyber-live-agent -> Gemini Live -> legal master -> sector RAG mini-agents
+Caller -> Twilio +17754060061 -> Twilio Elastic SIP Trunk -> LiveKit SIP -> Khadamati worker -> Gemini Live -> legal master -> sector RAG mini-agents
 ```
 
 Configured IDs:
@@ -17,7 +17,7 @@ LiveKit project: moulcyber
 LiveKit SIP URI: sip:0c0g2hzfv6c.sip.livekit.cloud
 LiveKit inbound trunk ID: ST_N9CgGUScJL8y
 LiveKit dispatch rule ID: SDR_FnGXiBPMwfKo
-LiveKit agent name: moulcyber-live-agent
+LiveKit agent name: moulcyber-live-agent (legacy dispatch name)
 Gemini Live model: gemini-3.1-flash-live-preview
 ```
 
@@ -38,6 +38,7 @@ The LiveKit agent now exposes legal hotline orchestration tools to Gemini Live:
 ```text
 route_hotline_issue
 query_legal_knowledge_base
+build_case_handoff_packet
 start_oral_approval_flow
 confirm_oral_approval_flow
 submit_mock_chikaya_complaint
@@ -46,6 +47,8 @@ submit_mock_chikaya_complaint
 Those tools call the FastAPI backend at `HOTLINE_API_BASE_URL` and keep the voice path thin while the backend handles master-slave A2A routing, local legal RAG retrieval, missing-field collection, safety flags, oral approval, and mock Chikaya execution.
 
 For latency, the voice agent calls `/api/legal-rag/query` with `use_llm=false`. Gemini Live then speaks from the retrieved chunks in the realtime session instead of waiting for a separate backend LLM response.
+
+When the agent is thinking or waiting for tools, LiveKit publishes low-volume built-in hold music. Tool calls also log `channel`, `call_id`, masked caller phone, selected route, article, and latency through `/api/call-events`.
 
 ## Run
 
@@ -91,10 +94,19 @@ Backend MCP-style tools:
 GET  /api/mcp-tools
 POST /api/mcp-tools/hotline_route_issue/run
 POST /api/mcp-tools/legal_rag_retrieve/run
+POST /api/mcp-tools/case_packet_build/run
 POST /api/mcp-tools/approval_flow_start/run
 POST /api/mcp-tools/approval_flow_confirm/run
 POST /api/mcp-tools/mock_chikaya_submit/run
 ```
+
+The default Docker MCP config starts the local stdio server at:
+
+```text
+livekit_agent/mcp_stdio_server.py
+```
+
+That server exposes the Khadamati hotline tools as real MCP tools to LiveKit while proxying execution to the backend registry.
 
 Example HTTP MCP server:
 

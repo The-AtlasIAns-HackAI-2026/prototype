@@ -45,23 +45,35 @@ export default function Analytics() {
           <div className="metric-grid">
             <Metric label="Events" value={data.total_events} />
             <Metric label="Success" value={`${Math.round(data.success_rate * 100)}%`} />
+            <Metric label="Voice events" value={data.channels?.["voice-agent"] || 0} />
+            <Metric label="Web events" value={data.channels?.web || 0} />
             <Metric label="Avg words" value={data.average_words} />
-            <Metric label="Words" value={data.total_words} />
           </div>
 
           <div className="analytics-table">
             <div className="table-row table-head">
               <span>Time</span>
+              <span>Channel</span>
               <span>Topic</span>
-              <span>Lang</span>
+              <span>Tool / Route</span>
+              <span>Call</span>
               <span>Status</span>
             </div>
             {data.recent.map((event, index) => (
               <div className="table-row" key={`${event.timestamp}-${index}`}>
-                <span>{new Date(event.timestamp).toLocaleTimeString()}</span>
-                <span>{event.topic}</span>
-                <span>{event.language}</span>
-                <span>{event.success ? "ok" : "fail"}</span>
+                {(() => {
+                  const meta = event.metadata || {};
+                  return (
+                    <>
+                      <span>{new Date(event.timestamp).toLocaleTimeString()}</span>
+                      <span>{meta.channel || "unknown"}</span>
+                      <span>{event.topic}</span>
+                      <span>{meta.tool || meta.route || meta.article || "-"}</span>
+                      <span>{meta.caller_phone || meta.call_id || "-"}</span>
+                      <span>{event.success ? "ok" : "fail"}</span>
+                    </>
+                  );
+                })()}
               </div>
             ))}
           </div>

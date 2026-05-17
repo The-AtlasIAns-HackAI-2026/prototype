@@ -46,6 +46,13 @@ class MCPToolRegistry:
 
 
 registry = MCPToolRegistry()
+LEGAL_RAG_SECTORS = {
+    "family_law",
+    "criminal_law",
+    "civil_procedure",
+    "constitutional_law",
+    "public_finance",
+}
 
 registry.register(
     MCPTool(
@@ -96,6 +103,41 @@ async def _legal_rag_retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         sector=str(payload.get("sector") or "") or None,
         top_k=int(payload.get("top_k") or 4),
     )
+
+
+async def _case_packet_build(payload: dict[str, Any]) -> dict[str, Any]:
+    topic = str(payload.get("topic") or payload.get("question") or payload.get("message") or "")
+    triage = route_issue(
+        message=topic,
+        language=str(payload.get("language") or "darija"),
+        provided_fields={
+            key: payload.get(key)
+            for key in ("first_name", "last_name", "caller_phone", "city", "topic")
+            if payload.get(key)
+        },
+    )
+    selected_expert_id = (triage.get("selected_expert") or {}).get("id")
+    retrieval = retrieve_legal_context(
+        question=topic,
+        sector=selected_expert_id if selected_expert_id in LEGAL_RAG_SECTORS else None,
+        top_k=int(payload.get("top_k") or 3),
+    )
+    first_source = (retrieval.get("results") or [{}])[0]
+    return {
+        "topic": topic,
+        "master_agent": "khadamati_legal_master",
+        "selected_expert": triage.get("selected_expert"),
+        "missing_fields": triage.get("missing_fields", []),
+        "risk_flags": triage.get("risk_flags", []),
+        "evidence_checklist": triage.get("evidence_checklist", []),
+        "recommended_action": triage.get("recommended_action"),
+        "rag_route": retrieval.get("route"),
+        "primary_article": first_source.get("primary_article"),
+        "article_count": first_source.get("article_count"),
+        "chunk_id": first_source.get("chunk_id"),
+        "pages": [first_source.get("page_start"), first_source.get("page_end")],
+        "a2a_trace": retrieval.get("a2a_trace"),
+    }
 
 
 async def _approval_flow_start(payload: dict[str, Any]) -> dict[str, Any]:
@@ -174,15 +216,39 @@ registry.register(
 
 registry.register(
     MCPTool(
+        name="case_packet_build",
+        description="Builds a human-review handoff packet with routing, nearest article, missing facts, evidence, and risk flags.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string"},
+                "first_name": {"type": "string"},
+                "last_name": {"type": "string"},
+                "caller_phone": {"type": "string"},
+                "city": {"type": "string"},
+                "top_k": {"type": "integer"},
+            },
+            "required": ["topic"],
+        },
+        handler=_case_packet_build,
+    )
+)
+
+registry.register(
+    MCPTool(
         name="mock_chikaya_submit",
         description="Submits a complaint to the mock Chikaya execution agent after explicit consent.",
         input_schema={
             "type": "object",
             "properties": {
-                "citizen_name": {"type": "string"},
-                "phone": {"type": "string"},
+                "first_name": {"type": "string"},
+                "last_name": {"type": "string"},
+                "topic": {"type": "string"},
+                "caller_phone": {"type": "string"},
                 "city": {"type": "string"},
                 "category": {"type": "string"},
+                "citizen_name": {"type": "string"},
+                "phone": {"type": "string"},
                 "subject": {"type": "string"},
                 "description": {"type": "string"},
                 "desired_resolution": {"type": "string"},
@@ -190,13 +256,9 @@ registry.register(
                 "consent": {"type": "boolean"},
             },
             "required": [
-                "citizen_name",
-                "phone",
-                "city",
-                "category",
-                "subject",
-                "description",
-                "desired_resolution",
+                "first_name",
+                "last_name",
+                "topic",
                 "consent",
             ],
         },

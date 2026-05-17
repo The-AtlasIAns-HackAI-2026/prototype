@@ -3,7 +3,7 @@
   "default_language": "darija",
   "orchestration": {
     "mode": "master_slave_a2a",
-    "master_agent": "moulcyber_legal_master",
+    "master_agent": "khadamati_legal_master",
     "policy": "The master agent routes one issue to one legal mini-agent first. Mini-agents use their sector RAG dataset and return cited context, risk flags, and one next question. Execution agents require oral consent."
   },
   "experts": [
@@ -37,7 +37,7 @@
       "model_hint": "morocco_criminal_law_agent",
       "dataset_path": "rag_datasets/sectors/criminal_law/chunks.jsonl",
       "mission": "Retrieve criminal-code context for crimes, penalties, classifications, and safety escalation without giving a final defense strategy.",
-      "routing_keywords": ["criminal", "crime", "theft", "assault", "prison", "penalty", "سرقة", "جريمة", "عقوبة", "حبس", "سجن", "ضرب", "جنائي"],
+      "routing_keywords": ["criminal", "crime", "theft", "assault", "prison", "penalty", "sari9a", "sariqa", "jinai", "l3o9oba", "3o9oba", "سرقة", "جريمة", "عقوبة", "حبس", "سجن", "ضرب", "جنائي"],
       "required_fields": ["city", "incident_summary", "date"],
       "evidence_checklist": ["police report", "summons", "medical certificate", "witness names", "date and place"],
       "next_questions": ["Is anyone detained or summoned by police?", "What happened and when?", "Do you have a case or report number?"],
@@ -86,9 +86,9 @@
       "dataset_path": "datasets/hotline/chikaya_complaints.jsonl",
       "mission": "Prepare a complaint packet and use the mock Chikaya execution agent only after explicit oral consent.",
       "routing_keywords": ["chikaya", "complaint", "plainte", "reclamation", "submit", "شكاية", "شكوى", "تظلم"],
-      "required_fields": ["citizen_name", "phone", "city", "category", "subject", "description", "desired_resolution", "consent"],
+      "required_fields": ["first_name", "last_name", "topic", "caller_phone", "consent"],
       "evidence_checklist": ["dates", "authority name", "reference number", "photos or scans", "names if known"],
-      "next_questions": ["What result do you want from the complaint?", "Do you have a reference number or proof?", "Do you explicitly consent to submit the mock complaint?"],
+      "next_questions": ["What is your first name?", "What is your last name?", "What is the complaint topic in one sentence?"],
       "escalation_rules": ["criminal allegation", "court case", "personal safety risk"]
     }
   ],

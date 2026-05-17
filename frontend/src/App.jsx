@@ -27,8 +27,8 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand" dir="ltr">
-          <span className="brand-mark">M</span>
-          <span>Moulcyber</span>
+          <span className="brand-mark">K</span>
+          <span>Khadamati</span>
         </div>
         <nav className="tabs" aria-label="Views">
           {tabs.map((tab) => {

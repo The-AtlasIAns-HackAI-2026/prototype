@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -9,7 +10,18 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 from livekit import agents
-from livekit.agents import Agent, AgentServer, AgentSession, JobContext, RunContext, function_tool, mcp
+from livekit.agents import (
+    Agent,
+    AgentServer,
+    AgentSession,
+    AudioConfig,
+    BackgroundAudioPlayer,
+    BuiltinAudioClip,
+    JobContext,
+    RunContext,
+    function_tool,
+    mcp,
+)
 from livekit.plugins import google
 
 
@@ -69,27 +81,28 @@ def _expand_env_in_mapping(mapping: dict[str, Any]) -> dict[str, str]:
 
 
 def _read_prompt() -> str:
-    prompt_file = PROMPTS_DIR / "moulcyber_darija.txt"
+    prompt_file = PROMPTS_DIR / "khadamati_darija.txt"
     if prompt_file.exists():
         base = prompt_file.read_text(encoding="utf-8").strip()
     else:
         base = (
-            'Nta smitek "Moulcyber". Jawb b-Darija Maghribiya, '
+            'Nta smitek "Khadamati". Jawb b-Darija Maghribiya, '
             "b joumal 9sar, bla markdown, bla URLs."
         )
 
     live_rules = """
 
 LIVE CALL RULES:
-1. Hadi mokalama telefoon. Jawb b sawt, b joumal 9sar, w khalli l-user ykammel ila qta3ek.
-2. Ila l-user sket, mat3awdch t7ell mawdo3 jdid. Tsennah ytkellem.
-3. Hadi legal hotline. Ila kayn soual qanouni, route b route_hotline_issue, men b3d jib nass qanouni b query_legal_knowledge_base.
-4. Jawb men retrieved context ghir. Dker source b tariqa 9sira: chunk/page.
-5. Mat3tich fatwa qanouniya niha2iya. Gol "hadi ma3louma 3amma, machi istichara niha2iya" f l7alat l-qanouniya.
-6. Qbel ay submit: start_oral_approval_flow, qra l-user chno ghadi ytsift, tsennah ygol "mwafeq", confirm_oral_approval_flow, عاد submit. F had prototype submission mock-only.
-7. Sta3mel l-outil d'internet ghir ila khas ta2kid rasmi/jdid barra dataset.
-8. Ila ma kanch 3andek tool aw data, gol "ma 3endich ta2kid daba" b sra7a.
-9. L-hadaf howa latency 9lila: retrieval tool low-latency, jawb b 1 ta 3 joumal.
+1. Smitk "Khadamati". Hadi mokalama telephone. Jawb b sawt, b joumal 9sar, w khalli l-user ykammel ila qta3ek.
+2. Ila l-user sket, matbda ta mawdo3 jdid. Tsennah ytkellem.
+3. Workflow strict: ay soual qanouni aw idari khaso route_hotline_issue awalan. Ila kayn qanoun, khas query_legal_knowledge_base taniyan. Matjawbch mn memory.
+4. Jawb ghir men retrieved context. Bda b article/fasl/madda ila kayn. Ila l-source fih articles bzzaf, gol kaynin bzzaf w smmi l-aqrab l-soual.
+5. Ila ma l9itich article/source, gol "ma 3endich source kafi daba" w sowwel soual wa7ed, bla general info.
+6. Qbel ay submit: start_oral_approval_flow, qra chno ghadi ytsift, tsennah "mwafeq", confirm_oral_approval_flow, عاد submit. F had prototype submission mock-only.
+7. F Chikaya, matsewelch 3la telephone. Telephone kaytakhod automatique men l-caller. Sewwel ghir first name, last name, w topic/probleme. Ila caller phone ma banche, gol system ma 3rafch number w submission maymknch.
+8. Ila l-user bgha tbdl l-mawdo3 l action aw human review, build_case_handoff_packet باش tkhrej packet فيه article, missing fields, evidence, risk.
+9. Sta3mel l-internet ghir ila khas ta2kid rasmi/jdid barra dataset.
+10. L-hadaf latency 9lila: retrieval tool low-latency, jawb b 1 ta 3 joumal.
 """.strip()
     return f"{base}\n\n{live_rules}"
 
@@ -100,6 +113,58 @@ async def _post_hotline(path: str, payload: dict[str, Any]) -> dict[str, Any]:
         response = await client.post(url, json=payload)
     response.raise_for_status()
     return response.json()
+
+
+async def _emit_call_event(payload: dict[str, Any]) -> None:
+    try:
+        await _post_hotline("/api/call-events", payload)
+    except Exception:
+        return
+
+
+def _json_mapping(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _extract_call_context(ctx: JobContext, participant: Any | None = None) -> dict[str, Any]:
+    room = ctx.room
+    attrs = getattr(participant, "attributes", None) or {}
+    metadata = _json_mapping(getattr(participant, "metadata", None))
+    room_metadata = _json_mapping(getattr(room, "metadata", None))
+    merged = {**room_metadata, **metadata, **attrs}
+
+    caller_phone = (
+        merged.get("sip.phoneNumber")
+        or merged.get("sip.phone_number")
+        or merged.get("sip.from")
+        or merged.get("from")
+        or merged.get("caller_phone")
+        or merged.get("phone")
+    )
+    call_id = (
+        merged.get("sip.callID")
+        or merged.get("sip.callId")
+        or merged.get("sip.call_id")
+        or merged.get("twilio.callSid")
+        or merged.get("call_sid")
+        or merged.get("call_id")
+        or getattr(participant, "sid", None)
+        or getattr(room, "sid", None)
+    )
+    return {
+        "channel": "voice-agent",
+        "call_id": str(call_id or ""),
+        "caller_phone": str(caller_phone or ""),
+        "call_status": str(merged.get("sip.callStatus") or merged.get("call_status") or ""),
+        "room_name": str(getattr(room, "name", "") or ""),
+        "participant_identity": str(getattr(participant, "identity", "") or ""),
+    }
 
 
 def _load_mcp_toolsets() -> list[Any]:
@@ -147,7 +212,6 @@ def _load_mcp_toolsets() -> list[Any]:
                         args=[_expand_env(str(arg)) for arg in server.get("args", [])],
                         cwd=server.get("cwd"),
                         env=_expand_env_in_mapping(server.get("env", {})) or None,
-                        allowed_tools=allowed_tools,
                     ),
                 )
             )
@@ -163,11 +227,50 @@ def _build_tools() -> list[Any]:
     return tools
 
 
-class MoulcyberAgent(Agent):
-    def __init__(self) -> None:
+class KhadamatiAgent(Agent):
+    def __init__(self, call_context: dict[str, Any] | None = None) -> None:
+        self.call_context = call_context or {"channel": "voice-agent"}
         super().__init__(
             instructions=_read_prompt(),
             tools=_build_tools(),
+        )
+
+    def _payload(self, payload: dict[str, Any], tool: str) -> dict[str, Any]:
+        return {
+            **payload,
+            "channel": self.call_context.get("channel") or "voice-agent",
+            "call_id": self.call_context.get("call_id") or "",
+            "caller_phone": self.call_context.get("caller_phone") or "",
+            "trace_id": self.call_context.get("call_id") or "",
+            "tool": tool,
+        }
+
+    async def _log_tool_result(
+        self,
+        *,
+        tool: str,
+        success: bool,
+        result: dict[str, Any] | None = None,
+        latency_ms: float | None = None,
+    ) -> None:
+        route = None
+        article = None
+        if result:
+            route_payload = result.get("route")
+            if isinstance(route_payload, dict):
+                route = route_payload.get("sector")
+            if isinstance(result.get("results"), list) and result["results"]:
+                article = result["results"][0].get("primary_article")
+        await _emit_call_event(
+            {
+                **self.call_context,
+                "event_type": "tool_result",
+                "tool": tool,
+                "route": route,
+                "article": article,
+                "latency_ms": latency_ms,
+                "success": success,
+            }
         )
 
     @function_tool()
@@ -186,15 +289,20 @@ class MoulcyberAgent(Agent):
             city: City or location if the caller gave one.
         """
         try:
+            started = asyncio.get_running_loop().time()
             result = await _post_hotline(
                 "/api/hotline/triage",
-                {
-                    "message": issue,
-                    "language": language,
-                    "city": city or None,
-                },
+                self._payload(
+                    {
+                        "message": issue,
+                        "language": language,
+                        "city": city or None,
+                    },
+                    "hotline_route_issue",
+                ),
             )
         except Exception as exc:
+            await self._log_tool_result(tool="hotline_route_issue", success=False)
             return json.dumps(
                 {
                     "error": "hotline_engine_unavailable",
@@ -203,6 +311,12 @@ class MoulcyberAgent(Agent):
                 },
                 ensure_ascii=False,
             )
+        await self._log_tool_result(
+            tool="hotline_route_issue",
+            success=True,
+            result=result,
+            latency_ms=round((asyncio.get_running_loop().time() - started) * 1000, 2),
+        )
         return json.dumps(result, ensure_ascii=False)
 
     @function_tool()
@@ -221,16 +335,21 @@ class MoulcyberAgent(Agent):
             top_k: Number of source chunks to retrieve. Use 3 for lowest latency.
         """
         try:
+            started = asyncio.get_running_loop().time()
             result = await _post_hotline(
                 "/api/legal-rag/query",
-                {
-                    "question": question,
-                    "sector": sector or None,
-                    "top_k": max(1, min(int(top_k or 3), 5)),
-                    "use_llm": False,
-                },
+                self._payload(
+                    {
+                        "question": question,
+                        "sector": sector or None,
+                        "top_k": max(1, min(int(top_k or 3), 5)),
+                        "use_llm": False,
+                    },
+                    "legal_rag_retrieve",
+                ),
             )
         except Exception as exc:
+            await self._log_tool_result(tool="legal_rag_retrieve", success=False)
             return json.dumps(
                 {
                     "error": "legal_rag_unavailable",
@@ -239,6 +358,12 @@ class MoulcyberAgent(Agent):
                 },
                 ensure_ascii=False,
             )
+        await self._log_tool_result(
+            tool="legal_rag_retrieve",
+            success=True,
+            result=result,
+            latency_ms=round((asyncio.get_running_loop().time() - started) * 1000, 2),
+        )
         return json.dumps(result, ensure_ascii=False)
 
     @function_tool()
@@ -257,12 +382,16 @@ class MoulcyberAgent(Agent):
         try:
             result = await _post_hotline(
                 "/api/hotline/approval/start",
-                {
-                    "action": action,
-                    "summary": summary,
-                },
+                self._payload(
+                    {
+                        "action": action,
+                        "summary": summary,
+                    },
+                    "approval_flow_start",
+                ),
             )
         except Exception as exc:
+            await self._log_tool_result(tool="approval_flow_start", success=False)
             return json.dumps(
                 {
                     "error": "approval_flow_unavailable",
@@ -270,6 +399,49 @@ class MoulcyberAgent(Agent):
                 },
                 ensure_ascii=False,
             )
+        await self._log_tool_result(tool="approval_flow_start", success=True, result=result)
+        return json.dumps(result, ensure_ascii=False)
+
+    @function_tool()
+    async def build_case_handoff_packet(
+        self,
+        context: RunContext,
+        topic: str,
+        first_name: str = "",
+        last_name: str = "",
+        city: str = "",
+    ) -> str:
+        """Build a structured handoff packet for legal aid, human review, or complaint execution.
+
+        Args:
+            topic: The caller's legal or administrative issue.
+            first_name: Caller first name if already collected.
+            last_name: Caller last name if already collected.
+            city: City if already known.
+        """
+        try:
+            result = await _post_hotline(
+                "/api/hotline/case-packet",
+                self._payload(
+                    {
+                        "topic": topic,
+                        "first_name": first_name or None,
+                        "last_name": last_name or None,
+                        "city": city or None,
+                    },
+                    "case_packet_build",
+                ),
+            )
+        except Exception as exc:
+            await self._log_tool_result(tool="case_packet_build", success=False)
+            return json.dumps(
+                {
+                    "error": "case_packet_unavailable",
+                    "detail": str(exc),
+                },
+                ensure_ascii=False,
+            )
+        await self._log_tool_result(tool="case_packet_build", success=True, result=result)
         return json.dumps(result, ensure_ascii=False)
 
     @function_tool()
@@ -288,12 +460,16 @@ class MoulcyberAgent(Agent):
         try:
             result = await _post_hotline(
                 "/api/hotline/approval/confirm",
-                {
-                    "approval_id": approval_id,
-                    "spoken_text": spoken_text,
-                },
+                self._payload(
+                    {
+                        "approval_id": approval_id,
+                        "spoken_text": spoken_text,
+                    },
+                    "approval_flow_confirm",
+                ),
             )
         except Exception as exc:
+            await self._log_tool_result(tool="approval_flow_confirm", success=False)
             return json.dumps(
                 {
                     "approved": False,
@@ -302,50 +478,55 @@ class MoulcyberAgent(Agent):
                 },
                 ensure_ascii=False,
             )
+        await self._log_tool_result(tool="approval_flow_confirm", success=bool(result.get("approved")), result=result)
         return json.dumps(result, ensure_ascii=False)
 
     @function_tool()
     async def submit_mock_chikaya_complaint(
         self,
         context: RunContext,
-        citizen_name: str,
-        phone: str,
-        city: str,
-        category: str,
-        subject: str,
-        description: str,
-        desired_resolution: str,
-        consent: bool,
+        first_name: str,
+        last_name: str,
+        topic: str,
+        city: str = "",
+        category: str = "",
+        desired_resolution: str = "",
+        consent: bool = False,
     ) -> str:
         """Submit a complaint to the mock Chikaya website only after explicit consent.
 
         Args:
-            citizen_name: Citizen full name for the mock complaint.
-            phone: Citizen phone number.
-            city: City related to the complaint.
-            category: Complaint category.
-            subject: Short complaint subject.
-            description: Detailed complaint story.
-            desired_resolution: What the citizen wants fixed.
+            first_name: Citizen first name.
+            last_name: Citizen last name.
+            topic: The caller's complaint topic/problem in their own words.
+            city: City related to the complaint if already known.
+            category: Complaint category if already known.
+            desired_resolution: What the citizen wants fixed if already known.
             consent: True only if the caller explicitly agreed to submit the mock complaint.
         """
+        caller_phone = self.call_context.get("caller_phone") or ""
         try:
             result = await _post_hotline(
                 "/api/hotline/chikaya/mock-submit",
-                {
-                    "citizen_name": citizen_name,
-                    "phone": phone,
-                    "city": city,
-                    "category": category,
-                    "subject": subject,
-                    "description": description,
-                    "desired_resolution": desired_resolution,
-                    "evidence": [],
-                    "consent": consent,
-                    "source": "voice-agent",
-                },
+                self._payload(
+                    {
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "topic": topic,
+                        "caller_phone": caller_phone,
+                        "city": city or "not provided",
+                        "category": category or "legal or administrative complaint",
+                        "desired_resolution": desired_resolution
+                        or "Request a clear written answer and guidance about the next administrative step.",
+                        "evidence": [],
+                        "consent": consent,
+                        "source": "voice-agent",
+                    },
+                    "mock_chikaya_submit",
+                ),
             )
         except Exception as exc:
+            await self._log_tool_result(tool="mock_chikaya_submit", success=False)
             return json.dumps(
                 {
                     "submitted": False,
@@ -354,6 +535,7 @@ class MoulcyberAgent(Agent):
                 },
                 ensure_ascii=False,
             )
+        await self._log_tool_result(tool="mock_chikaya_submit", success=bool(result.get("submitted")), result=result)
         return json.dumps(result, ensure_ascii=False)
 
 
@@ -364,10 +546,12 @@ server = AgentServer(
 
 
 @server.rtc_session(agent_name=AGENT_NAME)
-async def moulcyber_live_agent(ctx: JobContext):
+async def khadamati_live_agent(ctx: JobContext):
     google_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if google_key and not os.getenv("GOOGLE_API_KEY"):
         os.environ["GOOGLE_API_KEY"] = google_key
+
+    call_context = _extract_call_context(ctx, None)
 
     model = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
     session = AgentSession(
@@ -384,8 +568,21 @@ async def moulcyber_live_agent(ctx: JobContext):
 
     await session.start(
         room=ctx.room,
-        agent=MoulcyberAgent(),
+        agent=KhadamatiAgent(call_context),
     )
+
+    background_audio = BackgroundAudioPlayer(
+        thinking_sound=AudioConfig(BuiltinAudioClip.HOLD_MUSIC, volume=0.16)
+    )
+    await background_audio.start(room=ctx.room, agent_session=session)
+    ctx.add_shutdown_callback(background_audio.aclose)
+
+    try:
+        participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=8)
+        call_context.update(_extract_call_context(ctx, participant))
+    except Exception:
+        participant = None
+    await _emit_call_event({**call_context, "event_type": "session_started", "success": True})
 
 
 if __name__ == "__main__":

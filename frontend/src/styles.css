@@ -261,7 +261,7 @@ form button:disabled {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.8rem;
   margin-bottom: 1.25rem;
 }
@@ -288,7 +288,7 @@ form button:disabled {
 
 .table-row {
   display: grid;
-  grid-template-columns: 1fr 2fr 0.7fr 0.7fr;
+  grid-template-columns: 1fr 1fr 1.7fr 1.4fr 1.2fr 0.7fr;
   gap: 1rem;
   padding: 0.85rem 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -340,7 +340,9 @@ form button:disabled {
 .mock-site form,
 .result-stack,
 .source-list,
-.approval-box {
+.approval-box,
+.workflow-list,
+.workflow-chips {
   display: grid;
   gap: 0.75rem;
 }
@@ -364,6 +366,82 @@ form button:disabled {
   border-radius: 8px;
   padding: 0.85rem;
   background: rgba(31, 138, 112, 0.08);
+}
+
+.workflow-panel {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(31, 138, 112, 0.34);
+  border-radius: 8px;
+  background: rgba(31, 138, 112, 0.08);
+}
+
+.workflow-head,
+.workflow-item,
+.article-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.workflow-head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 800;
+}
+
+.workflow-head small,
+.workflow-item small,
+.article-banner span {
+  color: #bdb5af;
+}
+
+.workflow-chips {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.chip {
+  min-height: 2.2rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  color: #bdb5af;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip.on {
+  color: #effcf8;
+  border-color: rgba(31, 138, 112, 0.48);
+  background: rgba(31, 138, 112, 0.2);
+}
+
+.workflow-item {
+  padding: 0.72rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.workflow-item.running {
+  border-color: rgba(255, 211, 105, 0.45);
+}
+
+.workflow-item.blocked {
+  border-color: rgba(255, 156, 160, 0.45);
+}
+
+.article-banner {
+  padding: 0.85rem;
+  border-radius: 8px;
+  background: rgba(193, 39, 45, 0.16);
+  border: 1px solid rgba(193, 39, 45, 0.4);
 }
 
 .consent-row {
@@ -475,15 +553,17 @@ form button:disabled {
   }
 
   .lab-grid,
-  .field-grid {
+  .field-grid,
+  .workflow-chips {
     grid-template-columns: 1fr;
   }
 
   .table-row {
-    grid-template-columns: 1fr 1.4fr 0.7fr;
+    grid-template-columns: 1fr 1fr 1.5fr 0.7fr;
   }
 
-  .table-row span:nth-child(4) {
+  .table-row span:nth-child(4),
+  .table-row span:nth-child(5) {
     display: none;
   }
 }

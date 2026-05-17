@@ -34,12 +34,12 @@ export default function Demo() {
         {showElevenLabsFallback ? (
           <elevenlabs-convai
             agent-id={agentId}
-            action-text="Talk to Moulcyber"
+            action-text="Talk to Khadamati"
             avatar-orb-color-1="#C1272D"
             avatar-orb-color-2="#1f8a70"
           />
         ) : (
-          <p className="muted">Call the phone number to test the LiveKit voice path.</p>
+          <p className="muted">Call the phone number to test the Khadamati LiveKit voice path.</p>
         )}
       </div>
     </section>

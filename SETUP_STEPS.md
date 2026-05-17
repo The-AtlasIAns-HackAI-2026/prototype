@@ -1,4 +1,4 @@
-# Moulcyber Legal Hotline Setup Steps
+# Khadamati Setup Steps
 
 The legal hotline is now the main product. LiveKit + Gemini Live is the main call path; ElevenLabs stays available as an explicit fallback, but it is no longer the default route.
 
@@ -67,7 +67,7 @@ Confirmed by CLI:
 Project: moulcyber
 Inbound trunk: ST_N9CgGUScJL8y
 Dispatch rule: SDR_FnGXiBPMwfKo
-Agent: moulcyber-live-agent
+Agent: moulcyber-live-agent (legacy dispatch name)
 ```
 
 Verify when needed:

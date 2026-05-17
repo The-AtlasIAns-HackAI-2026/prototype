@@ -1,6 +1,6 @@
 import { Headphones, RadioTower, Search } from "lucide-react";
 import { useState } from "react";
-import { sendChat } from "./api.js";
+import { queryLegalRag } from "./api.js";
 
 export default function Landing() {
   const [message, setMessage] = useState("Chno kaygol qanoun lmaghribi 3la l7adana ba3d talaq?");
@@ -13,10 +13,15 @@ export default function Landing() {
     setLoading(true);
     setError("");
     try {
-      const data = await sendChat(message, "darija");
-      setAnswer(data.response);
+      const data = await queryLegalRag(message, {
+        language: "darija",
+        topK: 3,
+        useLlm: false,
+        traceId: "overview-legal-rag",
+      });
+      setAnswer(data.answer);
     } catch {
-      setError("API ma jawbatch daba.");
+      setError("Legal RAG ma jawbch daba.");
     } finally {
       setLoading(false);
     }
@@ -25,11 +30,11 @@ export default function Landing() {
   return (
     <section className="landing" dir="rtl">
       <div className="hero-copy">
-        <p className="eyebrow">Moulcyber Legal Hotline</p>
-        <h1>قانون مغربي f telephone</h1>
+        <p className="eyebrow">Khadamati Legal + Bureaucracy Hotline</p>
+        <h1>خدماتي f telephone</h1>
         <p className="lead">
           سول على الأسرة، الجنائي، المسطرة المدنية، الدستور، الضرائب، ولا شكاية.
-          Moulcyber كيرجع للوثائق وكيجاوبك بمصادر مختصرة.
+          Khadamati كيرجع للوثائق وكيجاوبك بمادة ولا فصل ومصدر مختصر.
         </p>
         <div className="signal-row" dir="ltr">
           <span>

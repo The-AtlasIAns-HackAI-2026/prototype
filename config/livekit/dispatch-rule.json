@@ -1,10 +1,10 @@
 {
   "dispatch_rule": {
-    "name": "moulcyber-inbound-dispatch",
+    "name": "khadamati-inbound-dispatch",
     "trunk_ids": ["ST_N9CgGUScJL8y"],
     "rule": {
       "dispatchRuleIndividual": {
-        "roomPrefix": "moulcyber-call-"
+        "roomPrefix": "khadamati-call-"
       }
     },
     "roomConfig": {
