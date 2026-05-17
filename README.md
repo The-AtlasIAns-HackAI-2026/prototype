@@ -9,7 +9,7 @@
 
 Millions of Moroccans in rural areas face legal challenges every day — custody disputes, criminal accusations, eviction notices — with no access to a lawyer and no reliable internet. The information exists. The gap is delivery.
 
-A 2G phone line is all most people have. That's enough.
+A phone line is all most people have. That's enough.
 
 ---
 
@@ -63,13 +63,6 @@ Khadamati:       Routes to civil_procedure sector
     ├──► constitutional_law agent    ──► RAG chunks (57 articles)
     ├──► public_finance agent        ──► RAG chunks (116 articles)
     └──► chikaya_complaints agent    ──► Mock Chikaya (oral approval gate)
-         │
-         ▼
-   FastAPI Backend                   React / Vite Dashboard
-   ├── /api/legal-rag/*              ├── Hotline tab (demo surface)
-   ├── /api/hotline/*                ├── Analytics tab
-   ├── /api/mcp-tools/*              └── Live call events
-   └── /api/chat
 ```
 
 ---
@@ -78,15 +71,14 @@ Khadamati:       Routes to civil_procedure sector
 
 | Layer | Technology | Why |
 |---|---|---|
-| **Telephony** | Twilio Elastic SIP Trunk | Reaches any PSTN phone, including 2G landlines |
+| **Telephony** | Twilio Elastic SIP Trunk | Reaches any PSTN phone |
 | **Voice AI** | LiveKit + Gemini Live | Sub-second audio roundtrip, no STT/TTS cascade |
 | **LLM** | Gemini 3.1 Flash | Best Darija/French code-switching; Google Search grounding |
 | **Legal RAG** | Local FAISS-style retrieval + embeddings | Zero network call on the voice path — fast, private |
 | **Tool Protocol** | MCP (Model Context Protocol) | Pluggable tools without re-deploying the agent |
 | **A2A Orchestration** | Custom master → mini-agent topology | Each legal sector gets a specialized context window |
 | **Backend** | FastAPI (Python) | Async, typed, Docker-ready |
-| **Frontend** | React + Vite | Analytics dashboard, live demo surface |
-| **Deployment** | Docker Compose + Nginx | DigitalOcean Droplet; frontend on Vercel |
+| **Deployment** | Docker Compose + Nginx | DigitalOcean Droplet |
 
 ---
 
@@ -223,7 +215,7 @@ GOOGLE_API_KEY=
 
 # Backend text/chat
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 
 # Twilio (for phone number routing)
 TWILIO_ACCOUNT_SID=
@@ -244,7 +236,7 @@ Just call **+1 775 406 0061** and speak in Darija.
 
 Morocco has ~37 million people. Millions live in rural areas where the nearest legal clinic might be hours away and internet access is a luxury. The justice gap is not a knowledge problem — the laws exist, they're public, they apply to everyone. The gap is access.
 
-A phone call costs almost nothing. Khadamati turns any 2G line into a legal aid hotline, available 24/7, that speaks your language, cites the actual law, and knows when to escalate to a human.
+A phone call costs almost nothing. Khadamati turns any line into a legal aid hotline, available 24/7, that speaks your language, cites the actual law, and knows when to escalate to a human.
 
 ---
 
