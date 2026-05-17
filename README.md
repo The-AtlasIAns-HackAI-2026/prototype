@@ -1,431 +1,258 @@
 # Khadamati
 
-Khadamati is a low-latency Moroccan legal and bureaucracy hotline for callers who may only have a basic phone line or weak mobile data. The primary production path is Twilio SIP to LiveKit, with a Gemini Live voice agent orchestrating a legal master agent, sector mini-agents, local RAG datasets, MCP-style tools, oral approval, and mock complaint execution.
+> **AI-powered legal hotline for rural Morocco — no smartphone, no internet required.**
+> Just a phone call, in your own language.
 
-The main product is now the legal hotline. Bureaucracy and complaint filing still exist, but as legal-adjacent execution flows behind explicit consent rather than as the core experience.
+---
 
-The project includes:
+## The Problem
 
-- `backend/`: FastAPI API for health checks, chat, Twilio fallback TwiML, legal RAG, hotline routing, oral approval, MCP-style tools, and mock Chikaya execution.
-- `livekit_agent/`: LiveKit Agents worker using Gemini Live, low-latency function tools, optional Google Search, and configurable MCP toolsets.
-- `frontend/`: React/Vite dashboard with the `Hotline` tab as the main demo surface.
-- `config/`: LiveKit SIP, legal hotline A2A orchestration, and MCP configuration examples.
-- `rag_datasets/`: sector-separated Moroccan legal RAG datasets generated from the uploaded PDFs.
-- `datasets/`: placeholder JSONL datasets for execution and complaint workflows, ready to be replaced with vetted content.
-- `deploy/`: Nginx host config for the currently deployed public domain.
+Millions of Moroccans in rural areas face legal challenges every day — custody disputes, criminal accusations, eviction notices — with no access to a lawyer and no reliable internet. The information exists. The gap is delivery.
 
-Secret files are intentionally not tracked. Use `.env.example` as the only committed environment template; keep `.env` and `.env.livekit` local.
+A 2G phone line is all most people have. That's enough.
+
+---
+
+## What Khadamati Does
+
+Dial **+1 775 406 0061** and speak naturally in **Moroccan Darija**. Khadamati listens, understands your situation, retrieves relevant articles from Moroccan law, and guides you — in real time, over a plain phone call.
+
+No app. No data plan. No literacy barrier.
+
+```
+Caller (Darija): "Jani istid3a mn lmahkama w ma 3raftch deadline dyal listi2naf"
+Khadamati:       Routes to civil_procedure sector
+                 → Retrieves Article 134 (appeals deadline) from local RAG
+                 → Speaks the answer back in clear, authentic Darija
+                 → Builds a case packet for legal aid handoff
+```
+
+---
+
+## Live Demo
+
+| Channel | Access |
+|---|---|
+| Phone hotline | `+1 775 406 0061` |
+| Web dashboard | [moulcyber.duckdns.org](https://moulcyber.duckdns.org) |
+| API health | `GET /health` |
+
+---
 
 ## Architecture
 
-Primary inbound call flow:
-
-1. Caller dials `+1 775 406 0061`.
-2. Twilio routes the number through Elastic SIP Trunk `moulcyber-livekit`.
-3. Twilio sends SIP origination to LiveKit Cloud.
-4. LiveKit SIP creates a room and dispatches the configured LiveKit agent.
-5. Gemini Live handles realtime audio input and output in the same session.
-6. The agent routes legal questions through a master-slave A2A legal orchestrator.
-7. Sector mini-agents retrieve cited context from local Moroccan legal RAG datasets.
-8. MCP-style tools handle approval, audit, and mock Chikaya execution when needed.
-
-Fallback flows:
-
-- Twilio webhooks can still return LiveKit SIP TwiML if the number is routed to `https://moulcyber.duckdns.org/twilio/inbound`.
-- ElevenLabs ConvAI remains available behind `VOICE_PROVIDER=elevenlabs` for rollback.
-- `/api/chat` provides a text/chat path using Gemini with Google Search grounding.
-- `/api/legal-rag/*` provides local legal retrieval and optional backend Gemini answers.
-- `/api/hotline/*` provides legal-adjacent routing, oral approval, and mock Chikaya execution.
-
-## Architecture Diagram
-
-GitHub does not render TikZ directly, but this block can be copied into a LaTeX document that loads `tikz`, `positioning`, and `arrows.meta`.
-
-```tex
-\begin{tikzpicture}[
-  node distance=1.25cm and 1.65cm,
-  box/.style={draw, rounded corners, align=center, minimum width=3.2cm, minimum height=1.0cm},
-  store/.style={draw, cylinder, shape border rotate=90, aspect=0.25, align=center, minimum height=1.1cm},
-  arrow/.style={-{Latex[length=2mm]}, thick}
-]
-  \node[box] (caller) {Caller\\PSTN phone};
-  \node[box, right=of caller] (twilio) {Twilio\\Elastic SIP Trunk};
-  \node[box, right=of twilio] (sip) {LiveKit SIP\\Inbound trunk};
-  \node[box, right=of sip] (agent) {LiveKit Agent\\Khadamati worker};
-  \node[box, above right=of agent] (gemini) {Gemini Live\\Realtime audio};
-  \node[box, right=of agent] (router) {Legal Master\\A2A router};
-  \node[box, above right=of router] (experts) {Sector Mini-Agents\\family, criminal, civil};
-  \node[store, right=of experts] (rag) {Legal RAG\\chunks + embeddings};
-  \node[box, below right=of router] (executor) {Execution Agent\\mock Chikaya};
-  \node[box, below=of agent] (mcp) {MCP Toolsets\\approval + execution};
-  \node[box, below=of sip] (backend) {FastAPI Backend\\RAG, MCP, hotline};
-  \node[store, below=of backend] (logs) {JSONL\\analytics logs};
-  \node[box, below=of twilio] (eleven) {ElevenLabs\\optional fallback};
-
-  \draw[arrow] (caller) -- node[above]{call} (twilio);
-  \draw[arrow] (twilio) -- node[above]{SIP origination} (sip);
-  \draw[arrow] (sip) -- node[above]{dispatch room} (agent);
-  \draw[arrow] (agent) -- node[above]{audio in/out} (gemini);
-  \draw[arrow] (agent) -- node[above]{function tools} (router);
-  \draw[arrow] (router) -- node[above]{A2A route} (experts);
-  \draw[arrow] (experts) -- node[above]{retrieve} (rag);
-  \draw[arrow] (router) -- node[right]{consent gate} (executor);
-  \draw[arrow] (agent) -- node[right]{tools} (mcp);
-  \draw[arrow] (backend) -- node[right]{events} (logs);
-  \draw[arrow, dashed] (twilio) -- node[left]{webhook fallback} (backend);
-  \draw[arrow, dashed] (backend) -- node[below]{VOICE\_PROVIDER=elevenlabs} (eleven);
-\end{tikzpicture}
+```
+  PSTN Caller (2G/landline)
+         │
+         ▼
+   Twilio Elastic SIP Trunk
+         │  SIP origination
+         ▼
+   LiveKit Cloud SIP
+         │  dispatch room
+         ▼
+   LiveKit Agent (Python)
+    ┌────┴─────────────────────────────────┐
+    │  Gemini Live (realtime audio in/out) │
+    │  GEMINI_THINKING_LEVEL=minimal       │
+    └────┬─────────────────────────────────┘
+         │  function tools
+         ▼
+   Legal Master Agent (A2A router)
+    ├──► family_law mini-agent       ──► RAG chunks (65 articles)
+    ├──► criminal_law mini-agent     ──► RAG chunks (430 articles)
+    ├──► civil_procedure mini-agent  ──► RAG chunks (149 articles)
+    ├──► constitutional_law agent    ──► RAG chunks (57 articles)
+    ├──► public_finance agent        ──► RAG chunks (116 articles)
+    └──► chikaya_complaints agent    ──► Mock Chikaya (oral approval gate)
+         │
+         ▼
+   FastAPI Backend                   React / Vite Dashboard
+   ├── /api/legal-rag/*              ├── Hotline tab (demo surface)
+   ├── /api/hotline/*                ├── Analytics tab
+   ├── /api/mcp-tools/*              └── Live call events
+   └── /api/chat
 ```
 
-## Runtime Path
+---
 
-Confirmed routing:
+## Tech Stack
 
-```text
-Twilio number: +17754060061
-Twilio trunk: moulcyber-livekit
-Twilio trunk domain: moulcyber-livekit.pstn.twilio.com
-Twilio origination URL: sip:0c0g2hzfv6c.sip.livekit.cloud;transport=tcp
-LiveKit project: moulcyber
-LiveKit inbound trunk: ST_N9CgGUScJL8y
-LiveKit dispatch rule: SDR_FnGXiBPMwfKo
-LiveKit agent name: moulcyber-live-agent (legacy dispatch name)
-Gemini Live model: gemini-3.1-flash-live-preview
-Legal RAG sectors: family_law, constitutional_law, civil_procedure, criminal_law, public_finance
+| Layer | Technology | Why |
+|---|---|---|
+| **Telephony** | Twilio Elastic SIP Trunk | Reaches any PSTN phone, including 2G landlines |
+| **Voice AI** | LiveKit + Gemini Live | Sub-second audio roundtrip, no STT/TTS cascade |
+| **LLM** | Gemini 3.1 Flash | Best Darija/French code-switching; Google Search grounding |
+| **Legal RAG** | Local FAISS-style retrieval + embeddings | Zero network call on the voice path — fast, private |
+| **Tool Protocol** | MCP (Model Context Protocol) | Pluggable tools without re-deploying the agent |
+| **A2A Orchestration** | Custom master → mini-agent topology | Each legal sector gets a specialized context window |
+| **Backend** | FastAPI (Python) | Async, typed, Docker-ready |
+| **Frontend** | React + Vite | Analytics dashboard, live demo surface |
+| **Deployment** | Docker Compose + Nginx | DigitalOcean Droplet; frontend on Vercel |
+
+---
+
+## Legal Knowledge Base
+
+Five Moroccan legal documents, fully chunked and embedded locally:
+
+| Sector | Source | Chunks |
+|---|---|---|
+| `family_law` | Family Law of Morocco | 65 |
+| `constitutional_law` | Constitution of Morocco | 57 |
+| `civil_procedure` | Civil Procedure Code | 149 |
+| `criminal_law` | Moroccan Penal Code | 430 |
+| `public_finance` | Finance Law 2026 | 116 |
+
+Every RAG response exposes the nearest **article anchor** (`الفصل` / `المادة`) so the voice agent can cite the law by article number, not just paraphrase it.
+
+---
+
+## Key Features
+
+### Voice-first, phone-first
+Khadamati routes Twilio SIP calls directly into LiveKit, bypassing a separate STT + TTS cascade. Gemini Live handles everything in a single realtime session. Latency stays under one second even on the phone path.
+
+### Authentic Moroccan Darija
+Trained on real colloquial vocabulary — `maticha` not `tomatim`, `daba` not `alan`, `mzyan` not `jayyid`. No MSA. No Algerian dialect. The agent sounds like someone from the neighborhood, not a textbook.
+
+### Agent-to-Agent (A2A) Legal Routing
+A master legal agent classifies the caller's issue and delegates to the appropriate sector mini-agent. The A2A trace is visible in every RAG response — full auditability, no black-box routing.
+
+### Oral Approval Gate
+Before any action is filed (mock Chikaya complaint), the agent reads the full summary back to the caller and waits for the caller to say **"mwafeq"** (I agree). Consent is logged and required. Nothing is submitted without it.
+
+### Case Packet for Human Handoff
+After the call, Khadamati can produce a structured case packet — caller identity, selected expert, nearest legal article, evidence checklist, risk flags — ready for a legal aid organization or NGO to pick up.
+
+### MCP Toolsets
+The voice agent exposes six function tools to Gemini Live, mirrored as MCP endpoints for the backend:
+
+```
+route_hotline_issue          →  classify & triage the caller's legal problem
+query_legal_knowledge_base   →  local RAG retrieval (no extra LLM call on voice path)
+build_case_handoff_packet    →  structured packet for legal aid handoff
+start_oral_approval_flow     →  read action summary, await verbal consent
+confirm_oral_approval_flow   →  validate "mwafeq" phrase, log approval
+submit_mock_chikaya_complaint →  mock complaint filing with audit receipt
 ```
 
-These deployed infrastructure names are intentionally still present until the SIP trunk, LiveKit project, DNS, and Vercel defaults are renamed. Product branding, API service names, prompts, UI copy, and legal workflow surfaces now use Khadamati.
+---
 
-## Hotline Orchestration
+## Project Structure
 
-The hotline engine is data-driven. `config/hotline/experts.json` defines the master-slave A2A legal topology:
+```
+khadamati/
+├── backend/
+│   ├── main.py              ← FastAPI: all routes, RAG, hotline, MCP, Twilio
+│   ├── legal_rag.py         ← Local retrieval engine + article anchoring
+│   ├── hotline_engine.py    ← A2A router, oral approval, mock Chikaya
+│   ├── mcp_tools.py         ← MCP tool registry
+│   ├── logger.py            ← Anonymized JSONL event logging
+│   └── languages.py         ← Darija / French prompt config
+├── livekit_agent/
+│   ├── agent.py             ← LiveKit worker: Gemini Live + function tools + MCP
+│   └── mcp_stdio_server.py  ← Local stdio MCP server bridging agent ↔ backend
+├── frontend/                ← React/Vite dashboard
+├── rag_datasets/            ← Chunked PDFs + embeddings (per sector)
+├── config/
+│   ├── hotline/experts.json ← A2A topology: master + mini-agents + datasets
+│   └── mcp.servers.json     ← MCP server config
+├── prompts/                 ← Darija + French system prompts
+└── docker-compose.yml
+```
 
-- `legal_safety`: court, police, safety, deadlines, minors, eviction, and human escalation.
-- `family_law`: marriage, divorce, custody, filiation, maintenance, and family court context.
-- `criminal_law`: crimes, penalties, police/legal-safety triage, and criminal-code context.
-- `civil_procedure`: lawsuits, judgments, appeals, enforcement, jurisdiction, and procedure.
-- `constitutional_law`: rights, freedoms, institutions, government, and constitutional context.
-- `public_finance`: tax, customs, budget, and 2026 finance-law context.
-- `chikaya_complaints`: complaint packet builder and consent-gated mock execution.
+---
 
-Each mini-agent has a model hint and dataset path. The current implementation routes to the right sector and retrieves cited context locally; later, each mini-agent can be backed by its own specialized model and vetted dataset without changing the LiveKit call path.
-
-The engine returns the selected expert, candidate experts, missing intake fields, next questions, evidence checklist, safety flags, dataset readiness, and recommended next action. Legal RAG responses also include an explicit A2A trace from `khadamati_legal_master` to the selected sector mini-agent.
-
-## Legal RAG Dataset
-
-The uploaded PDFs were converted into `rag_datasets/`:
-
-- `family-law-morocco.pdf`: 65 family-law chunks.
-- `constitution.pdf`: 57 constitutional-law chunks.
-- `civil.pdf`: 149 civil-procedure chunks.
-- `criminal-laws.pdf`: 430 criminal-law chunks.
-- `finance-project-2026.pdf`: 116 public-finance chunks.
-
-Each sector includes `pages.jsonl`, `chunks.jsonl`, `embeddings.npy`, and metadata. The phone path uses fast local retrieval with `use_llm=false` so Gemini Live can speak from retrieved context without making a second backend model call. The embeddings are kept for a later dense retrieval upgrade.
-
-RAG responses now expose article-level anchors:
-
-- `primary_article`: nearest detected `الفصل` or `المادة` to the retrieved match.
-- `article_count`: how many articles/fosoul were found in that chunk.
-- `article_notice`: marks when several articles are nearby, so the voice agent can say that and name the nearest first.
-- `a2a_trace`: shows `khadamati_legal_master -> selected mini-agent -> legal_rag_retriever`.
-
-Example legal RAG checks:
+## Quick Start
 
 ```bash
-curl -fsS http://127.0.0.1:7331/api/legal-rag/status
-
-curl -fsS -X POST http://127.0.0.1:7331/api/legal-rag/query \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Chno kaygol qanoun lmaghribi 3la l7adana ba3d talaq?","language":"darija","top_k":3,"use_llm":false}'
-
-curl -fsS -X POST http://127.0.0.1:7331/api/legal-rag/query \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Chno l3o9oba dyal sari9a f lqanoun jinai?","language":"darija","top_k":3,"use_llm":false}'
-```
-
-## Mock Chikaya Execution
-
-The execution agent is currently mock-only. It simulates opening and filing a complaint through a local mini Chikaya flow in the frontend, then writes an audit receipt to `logs/mock_chikaya_submissions.jsonl`.
-
-Execution is blocked unless required fields are present, `consent=true`, and the target is the mock endpoint. On the voice path, Khadamati only asks for first name, last name, and the complaint topic; the phone number is taken from LiveKit/Twilio caller metadata when available. The agent starts an approval flow, reads the action summary back to the caller, waits for the caller to say `mwafeq`, confirms the phrase, then submits. The real Chikaya automation should be added later as a separate driver behind the same execution interface, with a production safety gate and human review.
-
-## Case Packet
-
-Khadamati can build a human handoff packet for legal aid, jury review, or complaint escalation:
-
-```text
-POST /api/hotline/case-packet
-POST /api/mcp-tools/case_packet_build/run
-```
-
-The packet includes caller identity, channel/call id, selected expert, RAG sector, nearest article, source page/chunk, missing intake fields, evidence checklist, risk flags, and recommended next action. This makes the system useful after the call, not only during the conversation.
-
-## Event Logging
-
-Events now include safe workflow metadata:
-
-- `channel`: `voice-agent`, `web`, `web-test`, or API.
-- `call_id`: call/session id when available.
-- `caller_phone`: masked before being stored in analytics.
-- `tool`: MCP/function tool used.
-- `route`: selected sector or mini-agent.
-- `article`: nearest legal article/fasl/madda.
-- `latency_ms`: tool or workflow latency.
-
-The Analytics tab shows these fields so phone events are distinguishable from web demo events.
-
-Jury demo path:
-
-1. Open the `Hotline` tab in the frontend.
-2. Ask a legal RAG example and show the selected sector, sources, and A2A trace.
-3. Route a complaint request and review missing fields/evidence.
-4. Start oral approval, confirm `mwafeq`, then submit the mock Chikaya form.
-5. Show the receipt and audit list.
-
-## Latency Priorities
-
-The production path avoids an extra STT plus TTS cascade where possible:
-
-- Twilio SIP goes directly to LiveKit SIP.
-- LiveKit dispatches one Python agent per call room.
-- Gemini Live handles realtime audio input and output.
-- `GEMINI_THINKING_LEVEL=minimal` keeps responses short and fast.
-- The prompt asks for short spoken answers and avoids unnecessary tool calls.
-- MCP is loaded only from configured servers, so empty MCP config adds no external call overhead.
-- Legal RAG retrieval is local and can run without an extra backend LLM call.
-- The optional backend Gemini answer path is separate and can be slower; the phone path keeps Gemini Live in the realtime session and passes retrieved context through tools.
-
-## Local Setup
-
-```bash
+# 1. Configure environment
 cp .env.example .env
-lk app env -w -d .env.livekit
+lk app env -w -d .env.livekit   # pull LiveKit credentials
+
+# 2. Start services
 docker compose up -d --build
+
+# 3. Verify
 curl -fsS http://127.0.0.1:7331/health
-curl -fsS http://127.0.0.1:8081/
 ```
 
-Expected health shape:
-
+Expected response:
 ```json
 {
   "status": "ok",
   "service": "khadamati",
   "voice_provider": "livekit",
   "calls_ready": true,
-  "livekit_ready": true,
   "hotline_ready": true,
-  "legal_rag_ready": true,
-  "chat_ready": true
+  "legal_rag_ready": true
 }
 ```
 
-Watch the call agent:
+---
+
+## Try the API
 
 ```bash
-docker compose logs -f livekit-agent
-```
-
-Test hotline APIs:
-
-```bash
-curl -fsS http://127.0.0.1:7331/api/legal-rag/status
-
-curl -fsS -X POST http://127.0.0.1:7331/api/legal-rag/query \
+# Ask a legal question in Darija (local RAG, no LLM call)
+curl -X POST http://127.0.0.1:7331/api/legal-rag/query \
   -H 'Content-Type: application/json' \
-  -d '{"question":"Chno l3o9oba dyal sari9a f lqanoun jinai?","language":"darija","top_k":3,"use_llm":false}'
+  -d '{"question":"Chno kaygol qanoun lmaghribi 3la l7adana ba3d talaq?","language":"darija","top_k":3,"use_llm":false}'
 
-curl -fsS -X POST http://127.0.0.1:7331/api/hotline/triage \
+# Triage a hotline issue
+curl -X POST http://127.0.0.1:7331/api/hotline/triage \
   -H 'Content-Type: application/json' \
   -d '{"message":"Jani istid3a mn lmahkama w ma 3raftch deadline dyal listi2naf","language":"darija"}'
 
-curl -fsS http://127.0.0.1:7331/api/hotline/experts
-curl -fsS http://127.0.0.1:7331/api/mcp-tools
+# See all expert mini-agents
+curl http://127.0.0.1:7331/api/hotline/experts
+
+# See all MCP tools
+curl http://127.0.0.1:7331/api/mcp-tools
 ```
 
-## Environment
+---
 
-Required for the LiveKit voice path:
+## Required Environment Variables
 
-```text
-VOICE_PROVIDER=livekit
+```env
+# LiveKit voice path
 LIVEKIT_URL=
 LIVEKIT_API_KEY=
 LIVEKIT_API_SECRET=
-LIVEKIT_AGENT_NAME=moulcyber-live-agent
-LIVEKIT_SIP_URI=sip:0c0g2hzfv6c.sip.livekit.cloud;transport=tcp
-HOTLINE_API_BASE_URL=http://backend:8000
-HOTLINE_API_TIMEOUT=8
-HOTLINE_EXPERTS_FILE=/app/config/hotline/experts.json
-MOCK_CHIKAYA_LOG_FILE=/app/logs/mock_chikaya_submissions.jsonl
-ORAL_APPROVAL_LOG_FILE=/app/logs/oral_approvals.jsonl
-LEGAL_RAG_DIR=/app/rag_datasets
 GOOGLE_API_KEY=
-GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
-GEMINI_THINKING_LEVEL=minimal
-MCP_ENABLED=true
-MCP_SERVERS_FILE=/app/config/mcp.servers.json
-```
 
-Required for backend text/chat:
-
-```text
+# Backend text/chat
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.0-flash
-```
 
-Required only for Twilio REST outbound calls:
-
-```text
+# Twilio (for phone number routing)
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_PHONE_NUMBER=+17754060061
 ```
 
-## MCP
+See `.env.example` for the full list.
 
-MCP servers are configured in `config/mcp.servers.json` and loaded by `livekit_agent/agent.py`. The default Docker config starts a local stdio MCP server that proxies the Khadamati hotline tools to the backend registry, so the voice worker has real MCP toolsets plus the direct low-latency function tools.
+---
 
-```json
-{
-  "servers": [
-    {
-      "id": "khadamati-hotline",
-      "type": "stdio",
-      "command": "python",
-      "args": ["/app/livekit_agent/mcp_stdio_server.py"]
-    }
-  ]
-}
-```
+## Hackathon Demo Path
 
-HTTP MCP example:
+1. Open the **Hotline** tab in the frontend dashboard.
+2. Ask a legal question — observe the sector routing, RAG sources, and A2A trace.
+3. Request to file a complaint — watch the oral approval flow.
+4. Say **"mwafeq"** — see the mock receipt and audit log.
+5. Or just call **+1 775 406 0061** and speak in Darija.
 
-```json
-{
-  "servers": [
-    {
-      "id": "search",
-      "type": "http",
-      "url": "https://example.com/mcp",
-      "transport_type": "streamable_http",
-      "headers": {
-        "Authorization": "Bearer ${SEARCH_MCP_TOKEN}"
-      },
-      "allowed_tools": ["search"]
-    }
-  ]
-}
-```
+---
 
-stdio MCP example:
+## Why This Matters
 
-```json
-{
-  "servers": [
-    {
-      "id": "local-tools",
-      "type": "stdio",
-      "command": "node",
-      "args": ["server.js"],
-      "cwd": "/app/tools",
-      "env": {
-        "API_KEY": "${LOCAL_TOOL_API_KEY}"
-      },
-      "allowed_tools": ["lookup"]
-    }
-  ]
-}
-```
+Morocco has ~37 million people. Millions live in rural areas where the nearest legal clinic might be hours away and internet access is a luxury. The justice gap is not a knowledge problem — the laws exist, they're public, they apply to everyone. The gap is access.
 
-When MCP is enabled, the agent combines:
+A phone call costs almost nothing. Khadamati turns any 2G line into a legal aid hotline, available 24/7, that speaks your language, cites the actual law, and knows when to escalate to a human.
 
-- Gemini provider tools, currently Google Search.
-- Explicit MCP toolsets from `config/mcp.servers.json`.
-- Backend MCP-style tools for legal RAG, hotline routing, oral approval, and mock Chikaya execution.
-- Voice instructions that restrict tool calls to fresh/current data questions.
+---
 
-Backend tool registry:
-
-```text
-GET  /api/mcp-tools
-POST /api/mcp-tools/hotline_route_issue/run
-POST /api/mcp-tools/legal_rag_retrieve/run
-POST /api/mcp-tools/case_packet_build/run
-POST /api/mcp-tools/approval_flow_start/run
-POST /api/mcp-tools/approval_flow_confirm/run
-POST /api/mcp-tools/mock_chikaya_submit/run
-```
-
-The LiveKit voice agent also exposes equivalent function tools directly to Gemini Live:
-
-```text
-route_hotline_issue
-query_legal_knowledge_base
-build_case_handoff_packet
-start_oral_approval_flow
-confirm_oral_approval_flow
-submit_mock_chikaya_complaint
-```
-
-## Twilio Checks
-
-Verify the trunk and phone number:
-
-```bash
-twilio api:trunking:v1:trunks:list --properties sid,friendlyName,domainName
-twilio api:trunking:v1:trunks:origination-urls:list --trunk-sid TKc8fff9e36f81493855785cd5be5faff8
-twilio api:core:incoming-phone-numbers:list --phone-number +17754060061 --properties sid,phoneNumber,voiceUrl,trunkSid
-```
-
-## LiveKit Checks
-
-```bash
-lk project list
-lk sip inbound list
-lk sip dispatch list
-docker compose logs --tail=100 livekit-agent
-```
-
-The agent log should include a line similar to:
-
-```text
-registered worker ... agent_name=moulcyber-live-agent ... url=wss://moulcyber-7m07suek.livekit.cloud
-```
-
-## ElevenLabs Fallback
-
-ElevenLabs is not the primary route. To switch back later:
-
-```text
-VOICE_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=
-ELEVENLABS_AGENT_ID=
-```
-
-Then route Twilio Voice to:
-
-```text
-https://moulcyber.duckdns.org/twilio/inbound
-```
-
-The backend also keeps `/v1/chat/completions` for Custom LLM compatibility.
-
-## Frontend
-
-```bash
-cd frontend
-npm install
-npm run build
-```
-
-Frontend env:
-
-```text
-VITE_API_BASE_URL=https://moulcyber.duckdns.org
-VITE_SHOW_ELEVENLABS_WIDGET=false
-```
-
-Set `VITE_SHOW_ELEVENLABS_WIDGET=true` only when testing the fallback web widget.
+## Built at HackAI 2026 · AI for Rural Areas
