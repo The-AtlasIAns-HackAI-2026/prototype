@@ -1,0 +1,30 @@
+{
+  "slug": "constitutional_law",
+  "legal_sector": "Constitutional law",
+  "legal_sector_ar": "القانون الدستوري",
+  "source_file": "constitution.pdf",
+  "source_sha256": "08453188600647a5abbe75949ebfe027d9c5e9f19e79f5794640bd0c61d31394",
+  "source_title": "Constitution of the Kingdom of Morocco 2011",
+  "source_title_ar": "دستور المملكة المغربية 2011",
+  "country": "Morocco",
+  "language": "ar",
+  "extraction_mode": "native",
+  "extraction_counts": {
+    "native": 82
+  },
+  "page_count": 82,
+  "pages_jsonl_count": 82,
+  "chunk_count": 57,
+  "total_chunk_chars": 124159,
+  "pdf_metadata": {
+    "format": "PDF 1.4",
+    "title": "دستور -2011-المركز",
+    "author": "centre",
+    "creator": "PDFCreator Version 1.2.0",
+    "producer": "GPL Ghostscript  9.0",
+    "creationDate": "D:20110930155931+00'00'",
+    "modDate": "D:20110930155931+00'00'"
+  },
+  "built_at": "2026-05-17T02:03:16+00:00",
+  "build_seconds": 0.22
+}

@@ -1,0 +1,9 @@
+{
+  "model": "BAAI/bge-m3",
+  "dimension": 1024,
+  "chunk_count": 149,
+  "normalized": true,
+  "row_alignment": "embeddings.npy row N corresponds to chunks.jsonl line N",
+  "query_prefix": "query: ",
+  "passage_prefix": "passage: "
+}

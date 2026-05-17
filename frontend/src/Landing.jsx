@@ -3,7 +3,7 @@ import { useState } from "react";
 import { sendChat } from "./api.js";
 
 export default function Landing() {
-  const [message, setMessage] = useState("Ch7al taman l-maticha lyoum f Casablanca?");
+  const [message, setMessage] = useState("Chno kaygol qanoun lmaghribi 3la l7adana ba3d talaq?");
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -25,24 +25,24 @@ export default function Landing() {
   return (
     <section className="landing" dir="rtl">
       <div className="hero-copy">
-        <p className="eyebrow">Moulcyber</p>
-        <h1>معلومة f telephone — بلا internet</h1>
+        <p className="eyebrow">Moulcyber Legal Hotline</p>
+        <h1>قانون مغربي f telephone</h1>
         <p className="lead">
-          سول على الطقس، الثمن، الأخبار، ولا أي معلومة. Moulcyber كيرد عليك
-          بدارجة مفهومة فالتليفون.
+          سول على الأسرة، الجنائي، المسطرة المدنية، الدستور، الضرائب، ولا شكاية.
+          Moulcyber كيرجع للوثائق وكيجاوبك بمصادر مختصرة.
         </p>
         <div className="signal-row" dir="ltr">
           <span>
             <PhoneBadge /> +1 775 406 0061
           </span>
-          <span>Twilio + LiveKit + Gemini Live</span>
+          <span>Legal RAG + LiveKit + MCP</span>
         </div>
       </div>
 
       <div className="demo-panel">
         <div className="panel-title">
           <Search size={18} />
-          <span>جرب الجواب</span>
+          <span>جرب triage</span>
         </div>
         <form onSubmit={submitDemo}>
           <textarea

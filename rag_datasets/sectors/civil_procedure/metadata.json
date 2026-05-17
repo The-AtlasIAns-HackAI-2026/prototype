@@ -1,0 +1,30 @@
+{
+  "slug": "civil_procedure",
+  "legal_sector": "Civil procedure",
+  "legal_sector_ar": "المسطرة المدنية",
+  "source_file": "civil.pdf",
+  "source_sha256": "c4597f3c484593c2e8e637cd9efa8966c1e947ed91946b9727c975f34b89901d",
+  "source_title": "Moroccan Code of Civil Procedure",
+  "source_title_ar": "قانون المسطرة المدنية",
+  "country": "Morocco",
+  "language": "ar",
+  "extraction_mode": "native",
+  "extraction_counts": {
+    "native": 155
+  },
+  "page_count": 155,
+  "pages_jsonl_count": 155,
+  "chunk_count": 149,
+  "total_chunk_chars": 299340,
+  "pdf_metadata": {
+    "format": "PDF 1.5",
+    "title": "المملكة المغربية",
+    "author": "-",
+    "creator": "Microsoft® Word 2016",
+    "producer": "Microsoft® Word 2016",
+    "creationDate": "D:20210803114224+02'00'",
+    "modDate": "D:20210803114224+02'00'"
+  },
+  "built_at": "2026-05-17T02:03:16+00:00",
+  "build_seconds": 0.44
+}

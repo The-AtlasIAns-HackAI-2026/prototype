@@ -1,0 +1,72 @@
+{
+  "version": "1.0",
+  "built_at": "2026-05-17T02:03:16+00:00",
+  "router_policy": "Route each question to exactly one sector first. Use cross-sector retrieval only when the user explicitly asks a mixed-domain question.",
+  "agents": [
+    {
+      "agent_id": "morocco_family_law_agent",
+      "sector": "family_law",
+      "legal_sector": "Family law",
+      "legal_sector_ar": "قانون الأسرة",
+      "scope": "Marriage, divorce, filiation, custody, inheritance-related family code provisions, and family court procedure in the Moroccan Family Code.",
+      "dataset": "sectors/family_law/chunks.jsonl",
+      "pages": "sectors/family_law/pages.jsonl",
+      "embeddings": "sectors/family_law/embeddings.npy",
+      "embedding_metadata": "sectors/family_law/embeddings_meta.json",
+      "source_pdf": "family-law-morocco.pdf",
+      "system_prompt": "You are a small Moroccan legal-domain assistant. Only answer questions inside this scope: Marriage, divorce, filiation, custody, inheritance-related family code provisions, and family court procedure in the Moroccan Family Code. Use retrieved passages from this sector dataset first. Cite chunk_id and page_start/page_end for every legal claim. If the retrieved context is weak, missing, or outside scope, say so and route to another sector agent."
+    },
+    {
+      "agent_id": "morocco_constitutional_law_agent",
+      "sector": "constitutional_law",
+      "legal_sector": "Constitutional law",
+      "legal_sector_ar": "القانون الدستوري",
+      "scope": "Constitutional institutions, rights and freedoms, separation of powers, territorial organization, constitutional review, and transitional provisions.",
+      "dataset": "sectors/constitutional_law/chunks.jsonl",
+      "pages": "sectors/constitutional_law/pages.jsonl",
+      "embeddings": "sectors/constitutional_law/embeddings.npy",
+      "embedding_metadata": "sectors/constitutional_law/embeddings_meta.json",
+      "source_pdf": "constitution.pdf",
+      "system_prompt": "You are a small Moroccan legal-domain assistant. Only answer questions inside this scope: Constitutional institutions, rights and freedoms, separation of powers, territorial organization, constitutional review, and transitional provisions. Use retrieved passages from this sector dataset first. Cite chunk_id and page_start/page_end for every legal claim. If the retrieved context is weak, missing, or outside scope, say so and route to another sector agent."
+    },
+    {
+      "agent_id": "morocco_civil_procedure_agent",
+      "sector": "civil_procedure",
+      "legal_sector": "Civil procedure",
+      "legal_sector_ar": "المسطرة المدنية",
+      "scope": "Civil litigation procedure, jurisdiction, judgments, appeals, enforcement, and related procedural rules.",
+      "dataset": "sectors/civil_procedure/chunks.jsonl",
+      "pages": "sectors/civil_procedure/pages.jsonl",
+      "embeddings": "sectors/civil_procedure/embeddings.npy",
+      "embedding_metadata": "sectors/civil_procedure/embeddings_meta.json",
+      "source_pdf": "civil.pdf",
+      "system_prompt": "You are a small Moroccan legal-domain assistant. Only answer questions inside this scope: Civil litigation procedure, jurisdiction, judgments, appeals, enforcement, and related procedural rules. Use retrieved passages from this sector dataset first. Cite chunk_id and page_start/page_end for every legal claim. If the retrieved context is weak, missing, or outside scope, say so and route to another sector agent."
+    },
+    {
+      "agent_id": "morocco_criminal_law_agent",
+      "sector": "criminal_law",
+      "legal_sector": "Criminal law",
+      "legal_sector_ar": "القانون الجنائي",
+      "scope": "Crimes, penalties, aggravating and mitigating circumstances, offences against persons, property, public order, and criminal-code classifications.",
+      "dataset": "sectors/criminal_law/chunks.jsonl",
+      "pages": "sectors/criminal_law/pages.jsonl",
+      "embeddings": "sectors/criminal_law/embeddings.npy",
+      "embedding_metadata": "sectors/criminal_law/embeddings_meta.json",
+      "source_pdf": "criminal-laws.pdf",
+      "system_prompt": "You are a small Moroccan legal-domain assistant. Only answer questions inside this scope: Crimes, penalties, aggravating and mitigating circumstances, offences against persons, property, public order, and criminal-code classifications. Use retrieved passages from this sector dataset first. Cite chunk_id and page_start/page_end for every legal claim. If the retrieved context is weak, missing, or outside scope, say so and route to another sector agent."
+    },
+    {
+      "agent_id": "morocco_public_finance_agent",
+      "sector": "public_finance",
+      "legal_sector": "Public finance and tax law",
+      "legal_sector_ar": "المالية العمومية والجبايات",
+      "scope": "Public resources, tax and customs provisions, borrowing authorization, budget balance, public charges, and finance-bill measures for fiscal year 2026.",
+      "dataset": "sectors/public_finance/chunks.jsonl",
+      "pages": "sectors/public_finance/pages.jsonl",
+      "embeddings": "sectors/public_finance/embeddings.npy",
+      "embedding_metadata": "sectors/public_finance/embeddings_meta.json",
+      "source_pdf": "finance-project-2026.pdf",
+      "system_prompt": "You are a small Moroccan legal-domain assistant. Only answer questions inside this scope: Public resources, tax and customs provisions, borrowing authorization, budget balance, public charges, and finance-bill measures for fiscal year 2026. Use retrieved passages from this sector dataset first. Cite chunk_id and page_start/page_end for every legal claim. If the retrieved context is weak, missing, or outside scope, say so and route to another sector agent."
+    }
+  ]
+}

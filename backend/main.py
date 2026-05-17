@@ -14,7 +14,16 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from hotline_engine import (
+    confirm_oral_approval,
+    load_experts,
+    read_mock_submissions,
+    route_issue,
+    start_oral_approval,
+    submit_mock_chikaya,
+)
 from languages import get_language
+from legal_rag import build_legal_answer_prompt, legal_rag_status, retrieve_legal_context
 from logger import analytics_summary, log_event
 from mcp_tools import registry
 
@@ -38,6 +47,10 @@ class Settings(BaseSettings):
     livekit_url: str | None = None
     livekit_api_key: str | None = None
     livekit_api_secret: str | None = None
+    hotline_experts_file: str = "/app/config/hotline/experts.json"
+    mock_chikaya_log_file: str = "/app/logs/mock_chikaya_submissions.jsonl"
+    oral_approval_log_file: str = "/app/logs/oral_approvals.jsonl"
+    legal_rag_dir: str = "/app/rag_datasets"
 
     elevenlabs_api_key: str | None = None
     elevenlabs_agent_id: str | None = None
@@ -87,6 +100,48 @@ class OutboundCallRequest(BaseModel):
     language: str = "darija"
 
 
+class HotlineTriageRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=3000)
+    language: str = "darija"
+    city: str | None = Field(default=None, max_length=120)
+    provided_fields: dict[str, Any] = Field(default_factory=dict)
+
+
+class MockChikayaSubmissionRequest(BaseModel):
+    citizen_name: str = Field(..., min_length=2, max_length=120)
+    phone: str = Field(..., min_length=6, max_length=40)
+    city: str = Field(..., min_length=2, max_length=120)
+    category: str = Field(..., min_length=2, max_length=120)
+    subject: str = Field(..., min_length=4, max_length=180)
+    description: str = Field(..., min_length=12, max_length=4000)
+    desired_resolution: str = Field(..., min_length=4, max_length=1000)
+    evidence: list[str] = Field(default_factory=list, max_length=12)
+    consent: bool = False
+    source: Literal["mock-website", "voice-agent", "api"] = "api"
+
+
+class LegalRAGRequest(BaseModel):
+    question: str = Field(..., min_length=2, max_length=3000)
+    language: str = "darija"
+    sector: str | None = Field(default=None, max_length=80)
+    top_k: int = Field(default=4, ge=1, le=8)
+    use_llm: bool = True
+
+
+class OralApprovalStartRequest(BaseModel):
+    action: str = Field(..., min_length=2, max_length=120)
+    summary: str = Field(..., min_length=4, max_length=1000)
+
+
+class OralApprovalConfirmRequest(BaseModel):
+    approval_id: str = Field(..., min_length=4, max_length=80)
+    spoken_text: str = Field(..., min_length=1, max_length=500)
+
+
+class MCPToolRunRequest(BaseModel):
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class OpenAIMessage(BaseModel):
     role: Literal["system", "developer", "user", "assistant", "tool", "function"]
     content: str | list[Any] | None = ""
@@ -124,6 +179,7 @@ def _gemini_generate_sync(
     system_instruction: str,
     temperature: float | None = 0.35,
     max_tokens: int | None = 260,
+    grounding: bool = True,
 ) -> tuple[str, list[dict[str, str]]]:
     if not settings.gemini_api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
@@ -132,10 +188,10 @@ def _gemini_generate_sync(
     from google.genai import types
 
     client = genai.Client(api_key=settings.gemini_api_key)
-    grounding_tool = types.Tool(google_search=types.GoogleSearch())
+    tools = [types.Tool(google_search=types.GoogleSearch())] if grounding else None
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
-        tools=[grounding_tool],
+        tools=tools,
         temperature=temperature if temperature is not None else 0.35,
         max_output_tokens=max(60, min(max_tokens or 260, 700)),
     )
@@ -167,6 +223,7 @@ async def _gemini_generate(
     system_instruction: str,
     temperature: float | None = 0.35,
     max_tokens: int | None = 260,
+    grounding: bool = True,
 ) -> tuple[str, list[dict[str, str]]]:
     return await asyncio.to_thread(
         _gemini_generate_sync,
@@ -174,6 +231,7 @@ async def _gemini_generate(
         system_instruction=system_instruction,
         temperature=temperature,
         max_tokens=max_tokens,
+        grounding=grounding,
     )
 
 
@@ -342,6 +400,8 @@ async def health() -> dict[str, Any]:
         "livekit_ready": _livekit_ready(),
         "livekit_agent": settings.livekit_agent_name,
         "elevenlabs_fallback_ready": _elevenlabs_ready(),
+        "hotline_ready": True,
+        "legal_rag_ready": True,
         "chat_ready": bool(settings.gemini_api_key),
         "custom_llm_ready": bool(settings.gemini_api_key),
         "llm_fallback_on_error": settings.llm_fallback_on_error,
@@ -377,6 +437,141 @@ async def analytics() -> dict[str, Any]:
 @app.get("/api/mcp-tools")
 async def mcp_tools() -> dict[str, Any]:
     return {"tools": registry.list_tools()}
+
+
+@app.post("/api/mcp-tools/{tool_name}/run")
+async def run_mcp_tool(tool_name: str, request: MCPToolRunRequest) -> dict[str, Any]:
+    try:
+        return await registry.run(tool_name, request.payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/hotline/experts")
+async def hotline_experts() -> dict[str, Any]:
+    experts = [expert.public_dict() for expert in load_experts()]
+    return {"experts": experts, "count": len(experts)}
+
+
+@app.post("/api/hotline/triage")
+async def hotline_triage(payload: HotlineTriageRequest) -> dict[str, Any]:
+    provided = dict(payload.provided_fields)
+    if payload.city and not provided.get("city"):
+        provided["city"] = payload.city
+
+    result = route_issue(
+        message=payload.message,
+        language=get_language(payload.language).code,
+        provided_fields=provided,
+    )
+    await log_event(
+        topic="hotline_triage",
+        language=get_language(payload.language).code,
+        success=True,
+        response_text=result["recommended_action"],
+    )
+    return result
+
+
+@app.post("/api/hotline/chikaya/mock-submit")
+async def mock_chikaya_submit(payload: MockChikayaSubmissionRequest) -> dict[str, Any]:
+    result = await submit_mock_chikaya(payload.model_dump())
+    await log_event(
+        topic="mock_chikaya_submit",
+        language="darija",
+        success=bool(result.get("submitted")),
+        response_text=str(result.get("receipt_id") or result.get("missing_fields") or ""),
+    )
+    return result
+
+
+@app.get("/api/hotline/chikaya/mock-submissions")
+async def mock_chikaya_submissions(limit: int = 20) -> dict[str, Any]:
+    capped_limit = max(1, min(limit, 100))
+    submissions = await read_mock_submissions(capped_limit)
+    return {"submissions": submissions, "count": len(submissions)}
+
+
+@app.post("/api/hotline/approval/start")
+async def oral_approval_start(payload: OralApprovalStartRequest) -> dict[str, Any]:
+    result = await start_oral_approval(payload.model_dump())
+    await log_event(
+        topic="oral_approval_start",
+        language="darija",
+        success=True,
+        response_text=result.get("approval_id"),
+    )
+    return result
+
+
+@app.post("/api/hotline/approval/confirm")
+async def oral_approval_confirm(payload: OralApprovalConfirmRequest) -> dict[str, Any]:
+    result = await confirm_oral_approval(payload.model_dump())
+    await log_event(
+        topic="oral_approval_confirm",
+        language="darija",
+        success=bool(result.get("approved")),
+        response_text=result.get("status"),
+    )
+    return result
+
+
+@app.get("/api/legal-rag/status")
+async def legal_rag_status_endpoint() -> dict[str, Any]:
+    return legal_rag_status()
+
+
+@app.post("/api/legal-rag/query")
+async def legal_rag_query(payload: LegalRAGRequest) -> dict[str, Any]:
+    started = time.perf_counter()
+    retrieval = retrieve_legal_context(
+        question=payload.question,
+        sector=payload.sector,
+        top_k=payload.top_k,
+    )
+
+    answer = ""
+    generation_ms = 0.0
+    answer_model = "retrieval_only"
+    if payload.use_llm:
+        system_instruction, prompt = build_legal_answer_prompt(payload.question, retrieval)
+        generation_started = time.perf_counter()
+        try:
+            answer, _sources = await _gemini_generate(
+                prompt=prompt,
+                system_instruction=system_instruction,
+                temperature=0.2,
+                max_tokens=320,
+                grounding=False,
+            )
+            answer_model = settings.gemini_model
+        except Exception as exc:
+            answer = _fallback_rag_answer(payload.question, retrieval, exc)
+            answer_model = "retrieval_fallback"
+        generation_ms = (time.perf_counter() - generation_started) * 1000
+    else:
+        answer = _local_rag_answer(retrieval)
+        answer_model = "local_extractive_rag"
+
+    total_ms = (time.perf_counter() - started) * 1000
+    result = {
+        **retrieval,
+        "answer": answer,
+        "answer_model": answer_model,
+        "generation_ms": round(generation_ms, 2),
+        "latency_ms": round(total_ms, 2),
+        "low_latency_mode": not payload.use_llm,
+    }
+    await log_event(
+        topic="legal_rag_query",
+        language=get_language(payload.language).code,
+        success=True,
+        response_text=answer or payload.question,
+        metadata={"provider": answer_model},
+    )
+    return result
 
 
 def _message_text(content: str | list[Any] | None) -> str:
@@ -446,6 +641,37 @@ def _custom_llm_fallback(exc: Exception) -> str:
     return (
         "Smah liya khouya, l-khadma d l-internet ma jawbatch daba. "
         "3awed lia soual b tariqa okhra."
+    )
+
+
+def _fallback_rag_answer(question: str, retrieval: dict[str, Any], exc: Exception) -> str:
+    first = (retrieval.get("results") or [{}])[0]
+    chunk_id = first.get("chunk_id", "source inconnue")
+    page_start = first.get("page_start", "?")
+    page_end = first.get("page_end", "?")
+    excerpt = str(first.get("excerpt") or "").strip()
+    short_excerpt = excerpt[:420] + ("..." if len(excerpt) > 420 else "")
+    return (
+        "L-model ma jawbch daba, walakin l-RAG l9a source m9arba. "
+        f"Source: {chunk_id}, pages {page_start}-{page_end}. "
+        f" مقتطف: {short_excerpt} "
+        "Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
+    )
+
+
+def _local_rag_answer(retrieval: dict[str, Any]) -> str:
+    first = (retrieval.get("results") or [{}])[0]
+    route = retrieval.get("route") or {}
+    chunk_id = first.get("chunk_id", "source inconnue")
+    page_start = first.get("page_start", "?")
+    page_end = first.get("page_end", "?")
+    excerpt = str(first.get("excerpt") or "").strip()
+    compact = " ".join(excerpt.split())[:520]
+    return (
+        f"Route: {route.get('legal_sector', 'Legal RAG')}. "
+        f"Source {chunk_id}, pages {page_start}-{page_end}. "
+        f"{compact} "
+        "Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
     )
 
 

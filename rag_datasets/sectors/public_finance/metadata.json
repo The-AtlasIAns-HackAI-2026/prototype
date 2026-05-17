@@ -1,0 +1,30 @@
+{
+  "slug": "public_finance",
+  "legal_sector": "Public finance and tax law",
+  "legal_sector_ar": "المالية العمومية والجبايات",
+  "source_file": "finance-project-2026.pdf",
+  "source_sha256": "4b89106052f1f71ecfe561c5748681a79737afa9bab7da35f7e14f29f4aa830d",
+  "source_title": "Finance Bill No. 50.25 for Fiscal Year 2026",
+  "source_title_ar": "مشروع قانون المالية رقم 50.25 للسنة المالية 2026",
+  "country": "Morocco",
+  "language": "ar",
+  "extraction_mode": "native",
+  "extraction_counts": {
+    "native": 84,
+    "ocr": 9
+  },
+  "page_count": 93,
+  "pages_jsonl_count": 93,
+  "chunk_count": 116,
+  "total_chunk_chars": 276596,
+  "pdf_metadata": {
+    "format": "PDF 1.6",
+    "title": "مشروع قانون المالية 50.25 كامل.indd",
+    "creator": "Adobe InDesign 20.5 (Windows)",
+    "producer": "Adobe PDF Library 17.0",
+    "creationDate": "D:20251019154958+01'00'",
+    "modDate": "D:20251019155005+01'00'"
+  },
+  "built_at": "2026-05-17T02:03:16+00:00",
+  "build_seconds": 15.67
+}

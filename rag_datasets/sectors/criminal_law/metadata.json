@@ -1,0 +1,30 @@
+{
+  "slug": "criminal_law",
+  "legal_sector": "Criminal law",
+  "legal_sector_ar": "القانون الجنائي",
+  "source_file": "criminal-laws.pdf",
+  "source_sha256": "75c115c30055a3fd105ffcdefde655a1530ba78e214cee167a4dec1bed3a9726",
+  "source_title": "Moroccan Criminal Code",
+  "source_title_ar": "مجموعة القانون الجنائي",
+  "country": "Morocco",
+  "language": "ar",
+  "extraction_mode": "ocr",
+  "extraction_counts": {
+    "ocr": 219
+  },
+  "page_count": 219,
+  "pages_jsonl_count": 219,
+  "chunk_count": 430,
+  "total_chunk_chars": 512737,
+  "pdf_metadata": {
+    "format": "PDF 1.5",
+    "title": "المملكة المغربية \t           وزارة العدل والحريات \t                                     مديرية التشريع",
+    "author": "Justice",
+    "creator": "Microsoft® Word 2010",
+    "producer": "Microsoft® Word 2010",
+    "creationDate": "D:20210629120624+02'00'",
+    "modDate": "D:20210629120624+02'00'"
+  },
+  "built_at": "2026-05-17T02:03:16+00:00",
+  "build_seconds": 223.69
+}

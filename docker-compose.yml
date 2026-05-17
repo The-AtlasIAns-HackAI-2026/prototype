@@ -7,9 +7,17 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./prompts:/app/prompts:ro
+      - ./config:/app/config:ro
+      - ./datasets:/app/datasets:ro
+      - ./rag_datasets:/app/rag_datasets:ro
     env_file:
       - path: .env
         required: false
+    environment:
+      HOTLINE_EXPERTS_FILE: /app/config/hotline/experts.json
+      MOCK_CHIKAYA_LOG_FILE: /app/logs/mock_chikaya_submissions.jsonl
+      ORAL_APPROVAL_LOG_FILE: /app/logs/oral_approvals.jsonl
+      LEGAL_RAG_DIR: /app/rag_datasets
   livekit-agent:
     build: ./livekit_agent
     restart: unless-stopped
@@ -29,4 +37,6 @@ services:
       LIVEKIT_AGENT_PORT: "8081"
       GEMINI_LIVE_MODEL: gemini-3.1-flash-live-preview
       GEMINI_THINKING_LEVEL: minimal
+      HOTLINE_API_BASE_URL: http://backend:8000
+      HOTLINE_API_TIMEOUT: "8"
       MCP_SERVERS_FILE: /app/config/mcp.servers.json

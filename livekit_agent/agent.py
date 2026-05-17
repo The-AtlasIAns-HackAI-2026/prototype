@@ -6,9 +6,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+import httpx
 from dotenv import load_dotenv
 from livekit import agents
-from livekit.agents import Agent, AgentServer, AgentSession, JobContext, mcp
+from livekit.agents import Agent, AgentServer, AgentSession, JobContext, RunContext, function_tool, mcp
 from livekit.plugins import google
 
 
@@ -18,6 +19,8 @@ load_dotenv(".env.livekit")
 AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "moulcyber-live-agent")
 PROMPTS_DIR = Path(os.getenv("PROMPTS_DIR", "/app/prompts"))
 MCP_SERVERS_FILE = Path(os.getenv("MCP_SERVERS_FILE", "/app/config/mcp.servers.json"))
+HOTLINE_API_BASE_URL = os.getenv("HOTLINE_API_BASE_URL", "http://backend:8000").rstrip("/")
+HOTLINE_TIMEOUT = float(os.getenv("HOTLINE_API_TIMEOUT", "8"))
 
 
 def _clean_env_value(name: str) -> str | None:
@@ -80,11 +83,23 @@ def _read_prompt() -> str:
 LIVE CALL RULES:
 1. Hadi mokalama telefoon. Jawb b sawt, b joumal 9sar, w khalli l-user ykammel ila qta3ek.
 2. Ila l-user sket, mat3awdch t7ell mawdo3 jdid. Tsennah ytkellem.
-3. Sta3mel tools ghir ila kayn soual 3la lyoum, météo, prix, akhbar, aw data khas-ha internet.
-4. Ila ma kanch 3andek tool aw data, gol "ma 3endich ta2kid daba" b sra7a.
-5. L-hadaf howa latency 9lila: jawb b 1 ta 3 joumal.
+3. Hadi legal hotline. Ila kayn soual qanouni, route b route_hotline_issue, men b3d jib nass qanouni b query_legal_knowledge_base.
+4. Jawb men retrieved context ghir. Dker source b tariqa 9sira: chunk/page.
+5. Mat3tich fatwa qanouniya niha2iya. Gol "hadi ma3louma 3amma, machi istichara niha2iya" f l7alat l-qanouniya.
+6. Qbel ay submit: start_oral_approval_flow, qra l-user chno ghadi ytsift, tsennah ygol "mwafeq", confirm_oral_approval_flow, عاد submit. F had prototype submission mock-only.
+7. Sta3mel l-outil d'internet ghir ila khas ta2kid rasmi/jdid barra dataset.
+8. Ila ma kanch 3andek tool aw data, gol "ma 3endich ta2kid daba" b sra7a.
+9. L-hadaf howa latency 9lila: retrieval tool low-latency, jawb b 1 ta 3 joumal.
 """.strip()
     return f"{base}\n\n{live_rules}"
+
+
+async def _post_hotline(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    url = f"{HOTLINE_API_BASE_URL}{path}"
+    async with httpx.AsyncClient(timeout=HOTLINE_TIMEOUT) as client:
+        response = await client.post(url, json=payload)
+    response.raise_for_status()
+    return response.json()
 
 
 def _load_mcp_toolsets() -> list[Any]:
@@ -154,6 +169,192 @@ class MoulcyberAgent(Agent):
             instructions=_read_prompt(),
             tools=_build_tools(),
         )
+
+    @function_tool()
+    async def route_hotline_issue(
+        self,
+        context: RunContext,
+        issue: str,
+        language: str = "darija",
+        city: str = "",
+    ) -> str:
+        """Route a bureaucracy, public service, complaint, or legal-risk issue to the right expert desk.
+
+        Args:
+            issue: The caller's issue in their own words.
+            language: Caller language, usually darija or fr.
+            city: City or location if the caller gave one.
+        """
+        try:
+            result = await _post_hotline(
+                "/api/hotline/triage",
+                {
+                    "message": issue,
+                    "language": language,
+                    "city": city or None,
+                },
+            )
+        except Exception as exc:
+            return json.dumps(
+                {
+                    "error": "hotline_engine_unavailable",
+                    "detail": str(exc),
+                    "fallback": "Ask one short clarifying question and avoid legal conclusions.",
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(result, ensure_ascii=False)
+
+    @function_tool()
+    async def query_legal_knowledge_base(
+        self,
+        context: RunContext,
+        question: str,
+        sector: str = "",
+        top_k: int = 3,
+    ) -> str:
+        """Retrieve cited Moroccan legal context from the local RAG sector mini-agents.
+
+        Args:
+            question: The caller's legal question.
+            sector: Optional sector slug such as family_law, criminal_law, civil_procedure, constitutional_law, or public_finance.
+            top_k: Number of source chunks to retrieve. Use 3 for lowest latency.
+        """
+        try:
+            result = await _post_hotline(
+                "/api/legal-rag/query",
+                {
+                    "question": question,
+                    "sector": sector or None,
+                    "top_k": max(1, min(int(top_k or 3), 5)),
+                    "use_llm": False,
+                },
+            )
+        except Exception as exc:
+            return json.dumps(
+                {
+                    "error": "legal_rag_unavailable",
+                    "detail": str(exc),
+                    "fallback": "Say retrieval is unavailable and ask one clarifying question.",
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(result, ensure_ascii=False)
+
+    @function_tool()
+    async def start_oral_approval_flow(
+        self,
+        context: RunContext,
+        action: str,
+        summary: str,
+    ) -> str:
+        """Start an oral approval flow before a mock execution action.
+
+        Args:
+            action: The execution action being prepared.
+            summary: A concise summary of what will be submitted or executed.
+        """
+        try:
+            result = await _post_hotline(
+                "/api/hotline/approval/start",
+                {
+                    "action": action,
+                    "summary": summary,
+                },
+            )
+        except Exception as exc:
+            return json.dumps(
+                {
+                    "error": "approval_flow_unavailable",
+                    "detail": str(exc),
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(result, ensure_ascii=False)
+
+    @function_tool()
+    async def confirm_oral_approval_flow(
+        self,
+        context: RunContext,
+        approval_id: str,
+        spoken_text: str,
+    ) -> str:
+        """Confirm whether the caller gave explicit oral approval.
+
+        Args:
+            approval_id: Approval id returned by start_oral_approval_flow.
+            spoken_text: The caller's exact spoken approval or rejection.
+        """
+        try:
+            result = await _post_hotline(
+                "/api/hotline/approval/confirm",
+                {
+                    "approval_id": approval_id,
+                    "spoken_text": spoken_text,
+                },
+            )
+        except Exception as exc:
+            return json.dumps(
+                {
+                    "approved": False,
+                    "error": "approval_confirmation_unavailable",
+                    "detail": str(exc),
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(result, ensure_ascii=False)
+
+    @function_tool()
+    async def submit_mock_chikaya_complaint(
+        self,
+        context: RunContext,
+        citizen_name: str,
+        phone: str,
+        city: str,
+        category: str,
+        subject: str,
+        description: str,
+        desired_resolution: str,
+        consent: bool,
+    ) -> str:
+        """Submit a complaint to the mock Chikaya website only after explicit consent.
+
+        Args:
+            citizen_name: Citizen full name for the mock complaint.
+            phone: Citizen phone number.
+            city: City related to the complaint.
+            category: Complaint category.
+            subject: Short complaint subject.
+            description: Detailed complaint story.
+            desired_resolution: What the citizen wants fixed.
+            consent: True only if the caller explicitly agreed to submit the mock complaint.
+        """
+        try:
+            result = await _post_hotline(
+                "/api/hotline/chikaya/mock-submit",
+                {
+                    "citizen_name": citizen_name,
+                    "phone": phone,
+                    "city": city,
+                    "category": category,
+                    "subject": subject,
+                    "description": description,
+                    "desired_resolution": desired_resolution,
+                    "evidence": [],
+                    "consent": consent,
+                    "source": "voice-agent",
+                },
+            )
+        except Exception as exc:
+            return json.dumps(
+                {
+                    "submitted": False,
+                    "error": "mock_chikaya_unavailable",
+                    "detail": str(exc),
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(result, ensure_ascii=False)
 
 
 server = AgentServer(

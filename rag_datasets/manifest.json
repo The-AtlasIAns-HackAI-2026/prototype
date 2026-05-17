@@ -1,0 +1,213 @@
+{
+  "version": "1.0",
+  "built_at": "2026-05-17T02:03:16+00:00",
+  "source_root": "/Users/abdelmonaimbounite/Downloads/hackai",
+  "output_dir": "/Users/abdelmonaimbounite/Downloads/hackai/rag_datasets",
+  "chunking": {
+    "target_chars": 2200,
+    "overlap_chars": 280
+  },
+  "sectors": [
+    {
+      "slug": "family_law",
+      "legal_sector": "Family law",
+      "legal_sector_ar": "قانون الأسرة",
+      "source_file": "family-law-morocco.pdf",
+      "source_sha256": "0bcef71656d6d712b2d9c88656a82d7aa1ba4107b5545f62eb531e41deb2fcdf",
+      "source_title": "Moroccan Family Code",
+      "source_title_ar": "مدونة الأسرة",
+      "country": "Morocco",
+      "language": "ar",
+      "extraction_mode": "native",
+      "extraction_counts": {
+        "native": 91
+      },
+      "page_count": 91,
+      "pages_jsonl_count": 91,
+      "chunk_count": 65,
+      "total_chunk_chars": 136652,
+      "pdf_metadata": {
+        "format": "PDF 1.5",
+        "author": "Douk",
+        "creator": "Microsoft® Word 2016",
+        "producer": "Microsoft® Word 2016",
+        "creationDate": "D:20210803114602+02'00'",
+        "modDate": "D:20210803114602+02'00'"
+      },
+      "built_at": "2026-05-17T02:03:16+00:00",
+      "build_seconds": 0.25
+    },
+    {
+      "slug": "constitutional_law",
+      "legal_sector": "Constitutional law",
+      "legal_sector_ar": "القانون الدستوري",
+      "source_file": "constitution.pdf",
+      "source_sha256": "08453188600647a5abbe75949ebfe027d9c5e9f19e79f5794640bd0c61d31394",
+      "source_title": "Constitution of the Kingdom of Morocco 2011",
+      "source_title_ar": "دستور المملكة المغربية 2011",
+      "country": "Morocco",
+      "language": "ar",
+      "extraction_mode": "native",
+      "extraction_counts": {
+        "native": 82
+      },
+      "page_count": 82,
+      "pages_jsonl_count": 82,
+      "chunk_count": 57,
+      "total_chunk_chars": 124159,
+      "pdf_metadata": {
+        "format": "PDF 1.4",
+        "title": "دستور -2011-المركز",
+        "author": "centre",
+        "creator": "PDFCreator Version 1.2.0",
+        "producer": "GPL Ghostscript  9.0",
+        "creationDate": "D:20110930155931+00'00'",
+        "modDate": "D:20110930155931+00'00'"
+      },
+      "built_at": "2026-05-17T02:03:16+00:00",
+      "build_seconds": 0.22
+    },
+    {
+      "slug": "civil_procedure",
+      "legal_sector": "Civil procedure",
+      "legal_sector_ar": "المسطرة المدنية",
+      "source_file": "civil.pdf",
+      "source_sha256": "c4597f3c484593c2e8e637cd9efa8966c1e947ed91946b9727c975f34b89901d",
+      "source_title": "Moroccan Code of Civil Procedure",
+      "source_title_ar": "قانون المسطرة المدنية",
+      "country": "Morocco",
+      "language": "ar",
+      "extraction_mode": "native",
+      "extraction_counts": {
+        "native": 155
+      },
+      "page_count": 155,
+      "pages_jsonl_count": 155,
+      "chunk_count": 149,
+      "total_chunk_chars": 299340,
+      "pdf_metadata": {
+        "format": "PDF 1.5",
+        "title": "المملكة المغربية",
+        "author": "-",
+        "creator": "Microsoft® Word 2016",
+        "producer": "Microsoft® Word 2016",
+        "creationDate": "D:20210803114224+02'00'",
+        "modDate": "D:20210803114224+02'00'"
+      },
+      "built_at": "2026-05-17T02:03:16+00:00",
+      "build_seconds": 0.44
+    },
+    {
+      "slug": "criminal_law",
+      "legal_sector": "Criminal law",
+      "legal_sector_ar": "القانون الجنائي",
+      "source_file": "criminal-laws.pdf",
+      "source_sha256": "75c115c30055a3fd105ffcdefde655a1530ba78e214cee167a4dec1bed3a9726",
+      "source_title": "Moroccan Criminal Code",
+      "source_title_ar": "مجموعة القانون الجنائي",
+      "country": "Morocco",
+      "language": "ar",
+      "extraction_mode": "ocr",
+      "extraction_counts": {
+        "ocr": 219
+      },
+      "page_count": 219,
+      "pages_jsonl_count": 219,
+      "chunk_count": 430,
+      "total_chunk_chars": 512737,
+      "pdf_metadata": {
+        "format": "PDF 1.5",
+        "title": "المملكة المغربية \t           وزارة العدل والحريات \t                                     مديرية التشريع",
+        "author": "Justice",
+        "creator": "Microsoft® Word 2010",
+        "producer": "Microsoft® Word 2010",
+        "creationDate": "D:20210629120624+02'00'",
+        "modDate": "D:20210629120624+02'00'"
+      },
+      "built_at": "2026-05-17T02:03:16+00:00",
+      "build_seconds": 223.69
+    },
+    {
+      "slug": "public_finance",
+      "legal_sector": "Public finance and tax law",
+      "legal_sector_ar": "المالية العمومية والجبايات",
+      "source_file": "finance-project-2026.pdf",
+      "source_sha256": "4b89106052f1f71ecfe561c5748681a79737afa9bab7da35f7e14f29f4aa830d",
+      "source_title": "Finance Bill No. 50.25 for Fiscal Year 2026",
+      "source_title_ar": "مشروع قانون المالية رقم 50.25 للسنة المالية 2026",
+      "country": "Morocco",
+      "language": "ar",
+      "extraction_mode": "native",
+      "extraction_counts": {
+        "native": 84,
+        "ocr": 9
+      },
+      "page_count": 93,
+      "pages_jsonl_count": 93,
+      "chunk_count": 116,
+      "total_chunk_chars": 276596,
+      "pdf_metadata": {
+        "format": "PDF 1.6",
+        "title": "مشروع قانون المالية 50.25 كامل.indd",
+        "creator": "Adobe InDesign 20.5 (Windows)",
+        "producer": "Adobe PDF Library 17.0",
+        "creationDate": "D:20251019154958+01'00'",
+        "modDate": "D:20251019155005+01'00'"
+      },
+      "built_at": "2026-05-17T02:03:16+00:00",
+      "build_seconds": 15.67
+    }
+  ],
+  "embeddings": {
+    "model": "BAAI/bge-m3",
+    "dimension": 1024,
+    "normalized": true,
+    "sectors": {
+      "family_law": {
+        "model": "BAAI/bge-m3",
+        "dimension": 1024,
+        "chunk_count": 65,
+        "normalized": true,
+        "row_alignment": "embeddings.npy row N corresponds to chunks.jsonl line N",
+        "query_prefix": "query: ",
+        "passage_prefix": "passage: "
+      },
+      "constitutional_law": {
+        "model": "BAAI/bge-m3",
+        "dimension": 1024,
+        "chunk_count": 57,
+        "normalized": true,
+        "row_alignment": "embeddings.npy row N corresponds to chunks.jsonl line N",
+        "query_prefix": "query: ",
+        "passage_prefix": "passage: "
+      },
+      "civil_procedure": {
+        "model": "BAAI/bge-m3",
+        "dimension": 1024,
+        "chunk_count": 149,
+        "normalized": true,
+        "row_alignment": "embeddings.npy row N corresponds to chunks.jsonl line N",
+        "query_prefix": "query: ",
+        "passage_prefix": "passage: "
+      },
+      "criminal_law": {
+        "model": "BAAI/bge-m3",
+        "dimension": 1024,
+        "chunk_count": 430,
+        "normalized": true,
+        "row_alignment": "embeddings.npy row N corresponds to chunks.jsonl line N",
+        "query_prefix": "query: ",
+        "passage_prefix": "passage: "
+      },
+      "public_finance": {
+        "model": "BAAI/bge-m3",
+        "dimension": 1024,
+        "chunk_count": 116,
+        "normalized": true,
+        "row_alignment": "embeddings.npy row N corresponds to chunks.jsonl line N",
+        "query_prefix": "query: ",
+        "passage_prefix": "passage: "
+      }
+    }
+  }
+}

@@ -1,19 +1,27 @@
-import { Activity, Home, PhoneCall } from "lucide-react";
+import { Activity, Gavel, Home, PhoneCall } from "lucide-react";
 import { useState } from "react";
 import Analytics from "./Analytics.jsx";
 import Demo from "./Demo.jsx";
+import HotlineLab from "./HotlineLab.jsx";
 import Landing from "./Landing.jsx";
 
 const tabs = [
-  { id: "landing", label: "الرئيسية", icon: Home },
+  { id: "hotline", label: "Hotline", icon: Gavel },
+  { id: "landing", label: "Overview", icon: Home },
   { id: "analytics", label: "Analytics", icon: Activity },
   { id: "demo", label: "Demo", icon: PhoneCall },
 ];
 
 export default function App() {
-  const [active, setActive] = useState("landing");
+  const [active, setActive] = useState("hotline");
   const ActiveView =
-    active === "analytics" ? Analytics : active === "demo" ? Demo : Landing;
+    active === "analytics"
+      ? Analytics
+      : active === "demo"
+        ? Demo
+        : active === "hotline"
+          ? HotlineLab
+          : Landing;
 
   return (
     <div className="app-shell">

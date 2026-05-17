@@ -3,7 +3,7 @@
 Main inbound path:
 
 ```text
-Caller -> Twilio +17754060061 -> Twilio Elastic SIP Trunk -> LiveKit SIP -> moulcyber-live-agent -> Gemini Live
+Caller -> Twilio +17754060061 -> Twilio Elastic SIP Trunk -> LiveKit SIP -> moulcyber-live-agent -> Gemini Live -> legal master -> sector RAG mini-agents
 ```
 
 Configured IDs:
@@ -33,6 +33,20 @@ The local LiveKit agent is registered to LiveKit Cloud.
 
 ElevenLabs remains in the backend as fallback only. The default provider is `VOICE_PROVIDER=livekit`, and Twilio webhooks return LiveKit SIP TwiML if they are used.
 
+The LiveKit agent now exposes legal hotline orchestration tools to Gemini Live:
+
+```text
+route_hotline_issue
+query_legal_knowledge_base
+start_oral_approval_flow
+confirm_oral_approval_flow
+submit_mock_chikaya_complaint
+```
+
+Those tools call the FastAPI backend at `HOTLINE_API_BASE_URL` and keep the voice path thin while the backend handles master-slave A2A routing, local legal RAG retrieval, missing-field collection, safety flags, oral approval, and mock Chikaya execution.
+
+For latency, the voice agent calls `/api/legal-rag/query` with `use_llm=false`. Gemini Live then speaks from the retrieved chunks in the realtime session instead of waiting for a separate backend LLM response.
+
 ## Run
 
 ```bash
@@ -56,11 +70,30 @@ MCP stays configurable at:
 config/mcp.servers.json
 ```
 
+Legal hotline routing stays configurable at:
+
+```text
+config/hotline/experts.json
+rag_datasets/
+datasets/hotline/*.jsonl
+```
+
 Keep MCP enabled for the LiveKit agent with:
 
 ```text
 MCP_ENABLED=true
 MCP_SERVERS_FILE=/app/config/mcp.servers.json
+```
+
+Backend MCP-style tools:
+
+```text
+GET  /api/mcp-tools
+POST /api/mcp-tools/hotline_route_issue/run
+POST /api/mcp-tools/legal_rag_retrieve/run
+POST /api/mcp-tools/approval_flow_start/run
+POST /api/mcp-tools/approval_flow_confirm/run
+POST /api/mcp-tools/mock_chikaya_submit/run
 ```
 
 Example HTTP MCP server:

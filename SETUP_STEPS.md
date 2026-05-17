@@ -1,6 +1,6 @@
-# Moulcyber Setup Steps
+# Moulcyber Legal Hotline Setup Steps
 
-LiveKit is now the main call path. ElevenLabs stays available as an explicit fallback, but it is no longer the default route.
+The legal hotline is now the main product. LiveKit + Gemini Live is the main call path; ElevenLabs stays available as an explicit fallback, but it is no longer the default route.
 
 ## 1. Environment
 
@@ -14,6 +14,11 @@ Required for LiveKit calls:
 ```text
 VOICE_PROVIDER=livekit
 LIVEKIT_SIP_URI=sip:0c0g2hzfv6c.sip.livekit.cloud;transport=tcp
+HOTLINE_API_BASE_URL=http://backend:8000
+HOTLINE_EXPERTS_FILE=/app/config/hotline/experts.json
+MOCK_CHIKAYA_LOG_FILE=/app/logs/mock_chikaya_submissions.jsonl
+ORAL_APPROVAL_LOG_FILE=/app/logs/oral_approvals.jsonl
+LEGAL_RAG_DIR=/app/rag_datasets
 GOOGLE_API_KEY=...
 GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
 GEMINI_THINKING_LEVEL=minimal
@@ -87,11 +92,65 @@ Expected backend health includes:
 {
   "voice_provider": "livekit",
   "calls_ready": true,
-  "livekit_ready": true
+  "livekit_ready": true,
+  "hotline_ready": true,
+  "legal_rag_ready": true
 }
 ```
 
-## 5. ElevenLabs Fallback
+## 5. Legal RAG
+
+The legal RAG datasets are mounted from:
+
+```text
+rag_datasets/
+rag_datasets/sectors/*/chunks.jsonl
+rag_datasets/sectors/*/embeddings.npy
+```
+
+Useful checks:
+
+```bash
+curl -fsS http://127.0.0.1:7331/api/legal-rag/status
+
+curl -fsS -X POST http://127.0.0.1:7331/api/legal-rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Chno kaygol qanoun lmaghribi 3la l7adana ba3d talaq?","language":"darija","top_k":3,"use_llm":false}'
+
+curl -fsS -X POST http://127.0.0.1:7331/api/legal-rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Chno l3o9oba dyal sari9a f lqanoun jinai?","language":"darija","top_k":3,"use_llm":false}'
+```
+
+Use `use_llm=false` for the fastest path. The LiveKit voice agent passes those retrieved sources into Gemini Live instead of asking the backend to do another slow model call.
+
+## 6. Hotline Lab And MCP
+
+The hotline engine is configured at:
+
+```text
+config/hotline/experts.json
+datasets/hotline/*.jsonl
+```
+
+Useful checks:
+
+```bash
+curl -fsS http://127.0.0.1:7331/api/hotline/experts
+curl -fsS http://127.0.0.1:7331/api/mcp-tools
+
+curl -fsS -X POST http://127.0.0.1:7331/api/mcp-tools/approval_flow_start/run \
+  -H 'Content-Type: application/json' \
+  -d '{"payload":{"action":"mock_chikaya_submit","summary":"Voice caller asks to file a mock complaint after review."}}'
+```
+
+Open the frontend `Hotline` tab to test:
+
+```text
+Legal RAG -> A2A trace -> oral approval -> mwafeq confirmation -> mock Chikaya submit -> audit receipt
+```
+
+## 7. ElevenLabs Fallback
 
 To switch back later, set:
 
@@ -107,7 +166,7 @@ Then route Twilio to:
 https://moulcyber.duckdns.org/twilio/inbound
 ```
 
-## 6. Frontend
+## 8. Frontend
 
 When Vercel is ready:
 

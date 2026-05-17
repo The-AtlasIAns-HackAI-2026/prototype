@@ -1,0 +1,106 @@
+{
+  "version": 2,
+  "default_language": "darija",
+  "orchestration": {
+    "mode": "master_slave_a2a",
+    "master_agent": "moulcyber_legal_master",
+    "policy": "The master agent routes one issue to one legal mini-agent first. Mini-agents use their sector RAG dataset and return cited context, risk flags, and one next question. Execution agents require oral consent."
+  },
+  "experts": [
+    {
+      "id": "legal_safety",
+      "label": "Legal Safety and Escalation Gate",
+      "model_hint": "gemini-live-safety-reviewer",
+      "dataset_path": "rag_datasets/agent_registry.json",
+      "mission": "Detect urgent legal risk, court or police deadlines, minors, violence, detention, eviction, and cases that require a qualified professional before normal guidance.",
+      "routing_keywords": ["urgent", "deadline", "court", "police", "arrest", "detention", "violence", "minor", "eviction", "summons", "محكمة", "شرطة", "استدعاء", "اعتقال", "عنف", "قاصر", "إفراغ"],
+      "required_fields": ["city", "risk_summary", "deadline"],
+      "evidence_checklist": ["summons or judgment", "police report", "deadline date", "names and locations", "lawyer or case reference if any"],
+      "next_questions": ["Is anyone in immediate danger?", "Is there a court or police deadline?", "Which city and authority is involved?"],
+      "escalation_rules": ["immediate danger", "criminal process", "minor safety", "court deadline"]
+    },
+    {
+      "id": "family_law",
+      "label": "Family Law Mini-Agent",
+      "model_hint": "morocco_family_law_agent",
+      "dataset_path": "rag_datasets/sectors/family_law/chunks.jsonl",
+      "mission": "Answer family-code questions using RAG citations from the Moroccan Family Code: marriage, divorce, custody, filiation, maintenance, and related family court procedure.",
+      "routing_keywords": ["family", "marriage", "divorce", "custody", "nafaka", "talaq", "zawaj", "نفق", "طلاق", "زواج", "حضانة", "نسب", "الأسرة"],
+      "required_fields": ["city", "family_status", "problem_summary"],
+      "evidence_checklist": ["marriage certificate", "family record", "court papers", "children ages", "dates of separation or dispute"],
+      "next_questions": ["What is your family status now?", "Which city or family court?", "Are there children or an urgent hearing date?"],
+      "escalation_rules": ["minor at risk", "domestic violence", "court deadline"]
+    },
+    {
+      "id": "criminal_law",
+      "label": "Criminal Law Mini-Agent",
+      "model_hint": "morocco_criminal_law_agent",
+      "dataset_path": "rag_datasets/sectors/criminal_law/chunks.jsonl",
+      "mission": "Retrieve criminal-code context for crimes, penalties, classifications, and safety escalation without giving a final defense strategy.",
+      "routing_keywords": ["criminal", "crime", "theft", "assault", "prison", "penalty", "سرقة", "جريمة", "عقوبة", "حبس", "سجن", "ضرب", "جنائي"],
+      "required_fields": ["city", "incident_summary", "date"],
+      "evidence_checklist": ["police report", "summons", "medical certificate", "witness names", "date and place"],
+      "next_questions": ["Is anyone detained or summoned by police?", "What happened and when?", "Do you have a case or report number?"],
+      "escalation_rules": ["detention", "police custody", "violence", "minor involved"]
+    },
+    {
+      "id": "civil_procedure",
+      "label": "Civil Procedure Mini-Agent",
+      "model_hint": "morocco_civil_procedure_agent",
+      "dataset_path": "rag_datasets/sectors/civil_procedure/chunks.jsonl",
+      "mission": "Retrieve civil procedure context for lawsuits, jurisdiction, judgments, appeals, enforcement, and deadlines.",
+      "routing_keywords": ["civil", "procedure", "appeal", "judgment", "execution", "lawsuit", "court", "استئناف", "حكم", "تنفيذ", "دعوى", "محكمة", "المسطرة"],
+      "required_fields": ["city", "case_stage", "problem_summary"],
+      "evidence_checklist": ["judgment copy", "summons", "case number", "notification date", "execution file if any"],
+      "next_questions": ["What stage is the case in?", "Do you have a judgment or summons?", "What date did you receive the document?"],
+      "escalation_rules": ["appeal deadline", "execution deadline", "eviction"]
+    },
+    {
+      "id": "constitutional_law",
+      "label": "Constitutional Rights Mini-Agent",
+      "model_hint": "morocco_constitutional_law_agent",
+      "dataset_path": "rag_datasets/sectors/constitutional_law/chunks.jsonl",
+      "mission": "Retrieve constitutional context for rights, freedoms, institutions, parliament, government, territorial organization, and constitutional review.",
+      "routing_keywords": ["constitution", "rights", "freedom", "parliament", "government", "king", "دستور", "حقوق", "حريات", "الملك", "البرلمان", "الحكومة"],
+      "required_fields": ["right_or_institution", "problem_summary"],
+      "evidence_checklist": ["official decision", "administrative refusal", "date", "authority name"],
+      "next_questions": ["Which right or institution is involved?", "Is there an official decision or refusal?", "What outcome do you need?"],
+      "escalation_rules": ["rights violation with urgent harm", "detention", "court deadline"]
+    },
+    {
+      "id": "public_finance",
+      "label": "Public Finance and Tax Mini-Agent",
+      "model_hint": "morocco_public_finance_agent",
+      "dataset_path": "rag_datasets/sectors/public_finance/chunks.jsonl",
+      "mission": "Retrieve finance-bill, tax, customs, public charge, and budget context from the 2026 finance project dataset.",
+      "routing_keywords": ["tax", "finance", "budget", "customs", "vat", "tva", "ضريبة", "مالية", "ميزانية", "جمارك", "الرسم"],
+      "required_fields": ["tax_or_fee", "year", "problem_summary"],
+      "evidence_checklist": ["tax notice", "invoice", "customs document", "amount", "deadline"],
+      "next_questions": ["Which tax or fee is involved?", "What year or deadline?", "Do you have an amount or notice?"],
+      "escalation_rules": ["payment deadline", "large financial exposure", "seizure notice"]
+    },
+    {
+      "id": "chikaya_complaints",
+      "label": "Legal Complaint Execution Mini-Agent",
+      "model_hint": "gemini-live-complaint-drafter",
+      "dataset_path": "datasets/hotline/chikaya_complaints.jsonl",
+      "mission": "Prepare a complaint packet and use the mock Chikaya execution agent only after explicit oral consent.",
+      "routing_keywords": ["chikaya", "complaint", "plainte", "reclamation", "submit", "شكاية", "شكوى", "تظلم"],
+      "required_fields": ["citizen_name", "phone", "city", "category", "subject", "description", "desired_resolution", "consent"],
+      "evidence_checklist": ["dates", "authority name", "reference number", "photos or scans", "names if known"],
+      "next_questions": ["What result do you want from the complaint?", "Do you have a reference number or proof?", "Do you explicitly consent to submit the mock complaint?"],
+      "escalation_rules": ["criminal allegation", "court case", "personal safety risk"]
+    }
+  ],
+  "execution_agents": [
+    {
+      "id": "mock_chikaya_executor",
+      "label": "Mock Chikaya Execution Agent",
+      "mode": "mock_only",
+      "target": "/mock-chikaya",
+      "requires_oral_consent": true,
+      "approval_phrase": "mwafeq",
+      "audit_log": "logs/mock_chikaya_submissions.jsonl"
+    }
+  ]
+}
