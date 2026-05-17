@@ -34,8 +34,6 @@ Khadamati:       Routes to civil_procedure sector
 | Channel | Access |
 |---|---|
 | Phone hotline | `+1 775 406 0061` |
-| Web dashboard | [moulcyber.duckdns.org](https://moulcyber.duckdns.org) |
-| API health | `GET /health` |
 
 ---
 
@@ -238,12 +236,7 @@ See `.env.example` for the full list.
 ---
 
 ## Hackathon Demo Path
-
-1. Open the **Hotline** tab in the frontend dashboard.
-2. Ask a legal question — observe the sector routing, RAG sources, and A2A trace.
-3. Request to file a complaint — watch the oral approval flow.
-4. Say **"mwafeq"** — see the mock receipt and audit log.
-5. Or just call **+1 775 406 0061** and speak in Darija.
+Just call **+1 775 406 0061** and speak in Darija.
 
 ---
 
