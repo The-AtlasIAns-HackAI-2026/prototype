@@ -130,6 +130,14 @@ QUERY_EXPANSIONS: dict[str, tuple[str, ...]] = {
     "tax": ("ضريبة", "الرسم", "الجبايات"),
 }
 
+AGENT_DISPLAY_DARIJA: dict[str, str] = {
+    "family_law": "خبير قانون الأسرة",
+    "criminal_law": "خبير القانون الجنائي",
+    "civil_procedure": "خبير المسطرة المدنية",
+    "constitutional_law": "خبير القانون الدستوري",
+    "public_finance": "خبير المالية والضرائب",
+}
+
 
 @dataclass(frozen=True)
 class LoadedSector:
@@ -167,7 +175,16 @@ def _tokens(text: str) -> list[str]:
 
 
 def _agent_display(route: dict[str, Any]) -> str:
-    return f"{route.get('legal_sector') or route.get('sector')} expert agent"
+    sector = str(route.get("sector") or "")
+    return AGENT_DISPLAY_DARIJA.get(sector, "خبير قانوني")
+
+
+def _article_attribution(article: str | None, article_count: int = 0) -> str:
+    if not article:
+        return "ما بانش فصل ولا مادة بوضوح"
+    if article_count > 1:
+        return f"حسب {article}، وهو الأقرب من بين {article_count} فصول ولا مواد فالمصدر"
+    return f"حسب {article}"
 
 
 def _score_sector_candidates(
@@ -513,6 +530,7 @@ def _chunk_result(score: float, chunk: dict[str, Any], query: Counter[str]) -> d
         "article_refs": article_refs,
         "primary_article": primary_article,
         "article_count": len(article_refs),
+        "article_attribution": _article_attribution(primary_article, len(article_refs)),
         "article_notice": "many_articles_nearby" if len(article_refs) > 1 else "",
         "headings": chunk.get("headings") or [],
         "excerpt": excerpt,
@@ -522,10 +540,10 @@ def _chunk_result(score: float, chunk: dict[str, Any], query: Counter[str]) -> d
 def _agent_attribution(intervening_agents: list[dict[str, Any]]) -> str:
     displays = [str(item.get("display") or item.get("agent_id")) for item in intervening_agents if item]
     if not displays:
-        return "According to the Khadamati legal expert agent"
+        return "حسب الخبير القانوني ديال Khadamati"
     if len(displays) == 1:
-        return f"According to the {displays[0]}"
-    return "According to the merged view of " + ", ".join(displays[:-1]) + f", and {displays[-1]}"
+        return f"حسب {displays[0]} ديال Khadamati"
+    return "حسب الدمج ديال " + " و ".join(displays) + " ديال Khadamati"
 
 
 def _knowledge_graph_subgraph(
@@ -631,6 +649,7 @@ def build_legal_answer_prompt(question: str, retrieval: dict[str, Any]) -> tuple
                     f"Agent: {item.get('agent_label') or item.get('agent_id') or 'unknown'}",
                     f"Pages: {item['page_start']}-{item['page_end']}",
                     f"Nearest article: {item.get('primary_article') or 'not detected'}",
+                    f"Article attribution: {item.get('article_attribution') or 'not detected'}",
                     f"Articles: {', '.join(item['article_refs']) if item['article_refs'] else 'not detected'}",
                     f"Text: {item['excerpt']}",
                 ]
@@ -646,7 +665,8 @@ def build_legal_answer_prompt(question: str, retrieval: dict[str, Any]) -> tuple
 You are Khadamati, a Moroccan first-line legal and bureaucracy hotline assistant.
 Use only the provided retrieved legal context for legal claims.
 Answer in concise Moroccan Darija if the user uses Darija, otherwise use simple French.
-Mention which expert agent intervened before the legal answer.
+Mention which expert agent intervened in Darija: "حسب خبير القانون الجنائي ديال Khadamati...".
+Mention article attribution in Darija: "وحسب الفصل..." or "وحسب المادة...".
 Start with the nearest detected article/fasl/madda when present.
 If several articles are present, say that there are several and name the nearest one first.
 If multiple sector agents were consulted, merge them explicitly and separate which point came from which agent.

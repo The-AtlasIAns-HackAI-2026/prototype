@@ -884,12 +884,13 @@ def _fallback_rag_answer(question: str, retrieval: dict[str, Any], exc: Exceptio
     chunk_id = first.get("chunk_id", "source inconnue")
     page_start = first.get("page_start", "?")
     page_end = first.get("page_end", "?")
-    attribution = retrieval.get("agent_attribution") or "According to the Khadamati legal expert agent"
+    attribution = retrieval.get("agent_attribution") or "حسب الخبير القانوني ديال Khadamati"
+    article_attribution = first.get("article_attribution") or "ما بانش فصل ولا مادة بوضوح"
     excerpt = str(first.get("excerpt") or "").strip()
     short_excerpt = excerpt[:420] + ("..." if len(excerpt) > 420 else "")
     return (
         f"{attribution}. L-model ma jawbch daba, walakin l-knowledge graph l9a source m9arba. "
-        f"Source: {chunk_id}, pages {page_start}-{page_end}. "
+        f"{article_attribution}. Source: {chunk_id}, pages {page_start}-{page_end}. "
         f" مقتطف: {short_excerpt} "
         "Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
     )
@@ -898,7 +899,7 @@ def _fallback_rag_answer(question: str, retrieval: dict[str, Any], exc: Exceptio
 def _local_rag_answer(retrieval: dict[str, Any]) -> str:
     first = (retrieval.get("results") or [{}])[0]
     route = retrieval.get("route") or {}
-    attribution = retrieval.get("agent_attribution") or "According to the Khadamati legal expert agent"
+    attribution = retrieval.get("agent_attribution") or "حسب الخبير القانوني ديال Khadamati"
     merge_strategy = retrieval.get("merge_strategy")
 
     def source_sentence(item: dict[str, Any], limit: int = 320) -> str:
@@ -907,16 +908,17 @@ def _local_rag_answer(retrieval: dict[str, Any]) -> str:
         page_end = item.get("page_end", "?")
         primary_article = item.get("primary_article")
         article_count = int(item.get("article_count") or 0)
-        agent_label = item.get("agent_label") or item.get("legal_sector") or "legal expert agent"
-        if primary_article and article_count > 1:
-            article_note = f"kaynin {article_count} articles/fosoul; l-aqrab howa {primary_article}"
-        elif primary_article:
-            article_note = f"l-aqrab source howa {primary_article}"
-        else:
-            article_note = "article ma banhach b wodo7"
+        agent_label = item.get("agent_label") or item.get("legal_sector") or "خبير قانوني"
+        article_note = item.get("article_attribution")
+        if not article_note and primary_article and article_count > 1:
+            article_note = f"حسب {primary_article}، وهو الأقرب من بين {article_count} فصول ولا مواد فالمصدر"
+        elif not article_note and primary_article:
+            article_note = f"حسب {primary_article}"
+        elif not article_note:
+            article_note = "ما بانش فصل ولا مادة بوضوح"
         excerpt = str(item.get("excerpt") or "").strip()
         compact = " ".join(excerpt.split())[:limit]
-        return f"{agent_label}: {article_note}. Source {chunk_id}, pages {page_start}-{page_end}. {compact}"
+        return f"{agent_label}: {article_note}. المصدر {chunk_id}, الصفحات {page_start}-{page_end}. {compact}"
 
     if merge_strategy == "multi_agent_graph_merge":
         seen_agents: set[str] = set()
@@ -930,14 +932,14 @@ def _local_rag_answer(retrieval: dict[str, Any]) -> str:
             if len(merged_parts) >= 3:
                 break
         return (
-            f"{attribution}. Khadamati dmj had l-agents f knowledge graph. "
+            f"{attribution}. Khadamati دمجات هاد الخبراء ف knowledge graph. "
             + " ".join(merged_parts)
             + " Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
         )
 
     return (
         f"{attribution}. "
-        f"Route: {route.get('legal_sector', 'Legal KG')}. "
+        f"المسار: {route.get('legal_sector_ar') or route.get('legal_sector') or 'Legal KG'}. "
         f"{source_sentence(first, limit=520)} "
         "Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
     )

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="760" viewBox="0 0 1320 760" role="img" aria-labelledby="title desc">
+  <title id="title">Khadamati legal knowledge graph orchestration</title>
+  <desc id="desc">A legal master agent routes a mixed issue to family and criminal mini-agents, which retrieve article and chunk paths from the legal knowledge graph before producing a grounded answer.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2937"/>
+    </marker>
+    <style>
+      .title{font-family:Inter,Segoe UI,Arial,sans-serif;font-size:30px;font-weight:800;fill:#111827}
+      .label{font-family:Inter,Segoe UI,Arial,sans-serif;font-size:21px;font-weight:700;fill:#111827}
+      .sub{font-family:Inter,Segoe UI,Arial,sans-serif;font-size:15px;fill:#4b5563}
+      .edge{stroke:#1f2937;stroke-width:2.4;fill:none;marker-end:url(#arrow)}
+      .chip{font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px;font-weight:700;fill:#0f172a}
+    </style>
+  </defs>
+  <rect width="1320" height="760" rx="28" fill="#fbfaf8"/>
+  <text x="56" y="58" class="title">Legal Knowledge Graph: Multi-Agent Merge</text>
+  <text x="56" y="88" class="sub">The answer keeps both attributions: expert agent attribution and nearest article attribution.</text>
+
+  <g transform="translate(500,122)">
+    <rect width="320" height="78" rx="12" fill="#111827" stroke="#111827"/>
+    <text x="160" y="32" text-anchor="middle" fill="#fff" class="label">Khadamati legal master</text>
+    <text x="160" y="56" text-anchor="middle" fill="#d1d5db" class="sub">detects mixed-sector issue</text>
+  </g>
+
+  <g transform="translate(148,276)">
+    <rect width="250" height="78" rx="12" fill="#faf5ff" stroke="#7e22ce" stroke-width="2"/>
+    <text x="125" y="31" text-anchor="middle" class="label">خبير قانون الأسرة</text>
+    <text x="125" y="55" text-anchor="middle" class="sub">family-law agent</text>
+  </g>
+  <g transform="translate(535,276)">
+    <rect width="250" height="78" rx="12" fill="#faf5ff" stroke="#7e22ce" stroke-width="2"/>
+    <text x="125" y="31" text-anchor="middle" class="label">خبير القانون الجنائي</text>
+    <text x="125" y="55" text-anchor="middle" class="sub">criminal-law agent</text>
+  </g>
+  <g transform="translate(922,276)">
+    <rect width="250" height="78" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+    <text x="125" y="31" text-anchor="middle" class="label">خبير المسطرة المدنية</text>
+    <text x="125" y="55" text-anchor="middle" class="sub">optional procedure agent</text>
+  </g>
+
+  <g transform="translate(148,432)">
+    <rect width="250" height="78" rx="12" fill="#f0fdf4" stroke="#15803d" stroke-width="2"/>
+    <text x="125" y="31" text-anchor="middle" class="label">Article node</text>
+    <text x="125" y="55" text-anchor="middle" class="sub">المادة 96 / pages 31-33</text>
+  </g>
+  <g transform="translate(535,432)">
+    <rect width="250" height="78" rx="12" fill="#f0fdf4" stroke="#15803d" stroke-width="2"/>
+    <text x="125" y="31" text-anchor="middle" class="label">Article node</text>
+    <text x="125" y="55" text-anchor="middle" class="sub">الفصل 492 / pages 169-170</text>
+  </g>
+  <g transform="translate(922,432)">
+    <rect width="250" height="78" rx="12" fill="#f0fdf4" stroke="#15803d" stroke-width="2"/>
+    <text x="125" y="31" text-anchor="middle" class="label">Article node</text>
+    <text x="125" y="55" text-anchor="middle" class="sub">deadline / court procedure</text>
+  </g>
+
+  <g transform="translate(376,594)">
+    <rect width="568" height="86" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>
+    <text x="284" y="32" text-anchor="middle" class="label">Grounded spoken answer</text>
+    <text x="284" y="58" text-anchor="middle" class="sub">“حسب الدمج ديال خبير قانون الأسرة و خبير القانون الجنائي…”</text>
+  </g>
+
+  <path class="edge" d="M500 176 C390 205 315 235 273 276"/>
+  <path class="edge" d="M660 200 V276"/>
+  <path class="edge" d="M820 176 C930 205 1005 235 1047 276"/>
+  <path class="edge" d="M273 354 V432"/>
+  <path class="edge" d="M660 354 V432"/>
+  <path class="edge" d="M1047 354 V432"/>
+  <path class="edge" d="M273 510 C356 566 430 592 520 594"/>
+  <path class="edge" d="M660 510 V594"/>
+  <path class="edge" d="M1047 510 C966 566 890 592 800 594"/>
+
+  <rect x="56" y="690" width="1208" height="38" rx="8" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="74" y="715" class="chip">Graph path shape:</text>
+  <text x="210" y="715" class="sub">agent -> article/fasl/madda -> chunk -> pages -> answer, with oral attribution kept in Darija.</text>
+</svg>
