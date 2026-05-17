@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
+from google.genai import types as genai_types
 from livekit import agents
 from livekit.agents import (
     Agent,
@@ -97,12 +98,14 @@ LIVE CALL RULES:
 2. Ila l-user sket, matbda ta mawdo3 jdid. Tsennah ytkellem.
 3. Workflow strict: ay soual qanouni aw idari khaso route_hotline_issue awalan. Ila kayn qanoun, khas query_legal_knowledge_base taniyan. Matjawbch mn memory.
 4. Jawb ghir men retrieved context. Bda b article/fasl/madda ila kayn. Ila l-source fih articles bzzaf, gol kaynin bzzaf w smmi l-aqrab l-soual.
-5. Ila ma l9itich article/source, gol "ma 3endich source kafi daba" w sowwel soual wa7ed, bla general info.
+5. Men b3d tool result, jawb f nafs turn bla ma tsenna l-user y3awed ytkellem. Gol chkon tdkhel: "حسب Criminal law expert agent..." aw ila bzzaf "Khadamati dmj family law expert agent w criminal law expert agent...".
 6. Qbel ay submit: start_oral_approval_flow, qra chno ghadi ytsift, tsennah "mwafeq", confirm_oral_approval_flow, عاد submit. F had prototype submission mock-only.
 7. F Chikaya, matsewelch 3la telephone. Telephone kaytakhod automatique men l-caller. Sewwel ghir first name, last name, w topic/probleme. Ila caller phone ma banche, gol system ma 3rafch number w submission maymknch.
-8. Ila l-user bgha tbdl l-mawdo3 l action aw human review, build_case_handoff_packet باش tkhrej packet فيه article, missing fields, evidence, risk.
-9. Sta3mel l-internet ghir ila khas ta2kid rasmi/jdid barra dataset.
-10. L-hadaf latency 9lila: retrieval tool low-latency, jawb b 1 ta 3 joumal.
+8. Ila soual fih joj qawanin b7al family + criminal, khlli query_legal_knowledge_base merge_related_sectors=true w dmj l-jawab mn kul expert.
+9. Ila ma l9itich article/source, gol "ma 3endich source kafi daba" w sowwel soual wa7ed, bla general info.
+10. Ila l-user bgha tbdl l-mawdo3 l action aw human review, build_case_handoff_packet باش tkhrej packet فيه article, missing fields, evidence, risk.
+11. Sta3mel l-internet ghir ila khas ta2kid rasmi/jdid barra dataset.
+12. L-hadaf latency 9lila: retrieval tool low-latency, jawb b 1 ta 3 joumal.
 """.strip()
     return f"{base}\n\n{live_rules}"
 
@@ -326,6 +329,7 @@ class KhadamatiAgent(Agent):
         question: str,
         sector: str = "",
         top_k: int = 3,
+        merge_related_sectors: bool = True,
     ) -> str:
         """Retrieve cited Moroccan legal context from the local RAG sector mini-agents.
 
@@ -333,6 +337,7 @@ class KhadamatiAgent(Agent):
             question: The caller's legal question.
             sector: Optional sector slug such as family_law, criminal_law, civil_procedure, constitutional_law, or public_finance.
             top_k: Number of source chunks to retrieve. Use 3 for lowest latency.
+            merge_related_sectors: True when the question can involve more than one legal sector.
         """
         try:
             started = asyncio.get_running_loop().time()
@@ -344,6 +349,7 @@ class KhadamatiAgent(Agent):
                         "sector": sector or None,
                         "top_k": max(1, min(int(top_k or 3), 5)),
                         "use_llm": False,
+                        "merge_related_sectors": merge_related_sectors,
                     },
                     "legal_rag_retrieve",
                 ),
@@ -428,6 +434,7 @@ class KhadamatiAgent(Agent):
                         "first_name": first_name or None,
                         "last_name": last_name or None,
                         "city": city or None,
+                        "merge_related_sectors": True,
                     },
                     "case_packet_build",
                 ),
@@ -555,6 +562,10 @@ async def khadamati_live_agent(ctx: JobContext):
 
     model = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
     session = AgentSession(
+        preemptive_generation=True,
+        min_endpointing_delay=_env_float("LIVEKIT_MIN_ENDPOINTING_DELAY", 0.2),
+        max_endpointing_delay=_env_float("LIVEKIT_MAX_ENDPOINTING_DELAY", 0.9),
+        max_tool_steps=int(os.getenv("LIVEKIT_MAX_TOOL_STEPS", "4")),
         llm=google.realtime.RealtimeModel(
             model=model,
             voice=os.getenv("GEMINI_LIVE_VOICE", "Puck"),
@@ -563,6 +574,7 @@ async def khadamati_live_agent(ctx: JobContext):
             thinking_config={
                 "thinking_level": os.getenv("GEMINI_THINKING_LEVEL", "minimal"),
             },
+            tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
         ),
     )
 

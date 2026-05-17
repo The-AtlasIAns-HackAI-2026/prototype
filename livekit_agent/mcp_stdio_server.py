@@ -66,6 +66,7 @@ async def legal_rag_retrieve(
     question: str,
     sector: str = "",
     top_k: int = 3,
+    merge_related_sectors: bool = True,
     caller_phone: str = "",
     call_id: str = "",
     trace_id: str = "",
@@ -77,6 +78,7 @@ async def legal_rag_retrieve(
                 "question": question,
                 "sector": sector,
                 "top_k": max(1, min(int(top_k or 3), 5)),
+                "merge_related_sectors": bool(merge_related_sectors),
                 "caller_phone": caller_phone,
                 "call_id": call_id,
                 "trace_id": trace_id,
@@ -92,6 +94,7 @@ async def case_packet_build(
     last_name: str = "",
     caller_phone: str = "",
     city: str = "",
+    merge_related_sectors: bool = True,
     call_id: str = "",
     trace_id: str = "",
 ) -> dict[str, Any]:
@@ -104,6 +107,7 @@ async def case_packet_build(
                 "last_name": last_name,
                 "caller_phone": caller_phone,
                 "city": city,
+                "merge_related_sectors": bool(merge_related_sectors),
                 "call_id": call_id,
                 "trace_id": trace_id,
             }

@@ -166,6 +166,72 @@ def _tokens(text: str) -> list[str]:
     return expanded
 
 
+def _agent_display(route: dict[str, Any]) -> str:
+    return f"{route.get('legal_sector') or route.get('sector')} expert agent"
+
+
+def _score_sector_candidates(
+    question: str,
+    sectors: dict[str, LoadedSector],
+) -> list[tuple[float, LoadedSector]]:
+    token_set = set(_tokens(question))
+    lowered = question.lower()
+    scored: list[tuple[float, LoadedSector]] = []
+    for slug, sector in sectors.items():
+        hints = SECTOR_HINTS.get(slug, ())
+        score = 0.0
+        for hint in hints:
+            hint_l = hint.lower()
+            if hint_l in token_set:
+                score += 3
+            elif hint_l in lowered:
+                score += 2
+        scored.append((score, sector))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return scored
+
+
+def _build_knowledge_graph(sectors: dict[str, LoadedSector]) -> dict[str, Any]:
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, str]] = []
+
+    for sector in sectors.values():
+        sector_id = f"sector:{sector.slug}"
+        nodes[sector_id] = {
+            "id": sector_id,
+            "kind": "sector",
+            "label": sector.metadata.get("legal_sector") or sector.slug,
+            "agent_id": sector.agent.get("agent_id"),
+        }
+
+        for chunk in sector.chunks:
+            chunk_id = str(chunk.get("chunk_id") or "")
+            if not chunk_id:
+                continue
+            chunk_node_id = f"chunk:{chunk_id}"
+            nodes[chunk_node_id] = {
+                "id": chunk_node_id,
+                "kind": "chunk",
+                "label": chunk_id,
+                "sector": sector.slug,
+                "pages": [chunk.get("page_start"), chunk.get("page_end")],
+            }
+            edges.append({"from": chunk_node_id, "to": sector_id, "type": "IN_SECTOR"})
+
+            text = str(chunk.get("text") or "")
+            extracted = [item["label"] for item in _extract_articles(text)]
+            article_refs = list(dict.fromkeys([*(chunk.get("article_refs") or []), *extracted]))
+            for article in article_refs:
+                article_id = f"article:{article}"
+                nodes.setdefault(
+                    article_id,
+                    {"id": article_id, "kind": "article", "label": str(article), "sector": sector.slug},
+                )
+                edges.append({"from": chunk_node_id, "to": article_id, "type": "MENTIONS_ARTICLE"})
+
+    return {"nodes": nodes, "edges": edges}
+
+
 @lru_cache(maxsize=1)
 def load_legal_rag() -> dict[str, Any]:
     root = rag_root()
@@ -192,6 +258,7 @@ def load_legal_rag() -> dict[str, Any]:
         "manifest": manifest,
         "registry": registry,
         "sectors": sectors,
+        "knowledge_graph": _build_knowledge_graph(sectors),
     }
 
 
@@ -199,6 +266,7 @@ def legal_rag_status() -> dict[str, Any]:
     started = time.perf_counter()
     data = load_legal_rag()
     sectors: dict[str, LoadedSector] = data["sectors"]
+    knowledge_graph = data["knowledge_graph"]
     return {
         "ready": True,
         "root": data["root"],
@@ -206,6 +274,11 @@ def legal_rag_status() -> dict[str, Any]:
         "built_at": data["manifest"].get("built_at"),
         "sector_count": len(sectors),
         "chunk_count": sum(len(sector.chunks) for sector in sectors.values()),
+        "knowledge_graph": {
+            "mode": "article_sector_chunk_graph",
+            "node_count": len(knowledge_graph["nodes"]),
+            "edge_count": len(knowledge_graph["edges"]),
+        },
         "sectors": [
             {
                 "slug": sector.slug,
@@ -229,27 +302,42 @@ def route_legal_sector(question: str, preferred_sector: str | None = None) -> di
         sector = sectors[preferred_sector]
         return _sector_route_payload(sector, 1.0, "explicit")
 
-    token_set = set(_tokens(question))
-    lowered = question.lower()
-    scored: list[tuple[float, LoadedSector]] = []
-    for slug, sector in sectors.items():
-        hints = SECTOR_HINTS.get(slug, ())
-        score = 0.0
-        for hint in hints:
-            hint_l = hint.lower()
-            if hint_l in token_set:
-                score += 3
-            elif hint_l in lowered:
-                score += 2
-        scored.append((score, sector))
-
-    scored.sort(key=lambda item: item[0], reverse=True)
+    scored = _score_sector_candidates(question, sectors)
     best_score, best_sector = scored[0]
     if best_score <= 0:
         best_sector = sectors.get("civil_procedure") or next(iter(sectors.values()))
         best_score = 1.0
     confidence = min(0.95, 0.45 + best_score * 0.07)
     return _sector_route_payload(best_sector, confidence, "keyword")
+
+
+def route_legal_sectors(
+    question: str,
+    preferred_sector: str | None = None,
+    max_sectors: int = 3,
+) -> list[dict[str, Any]]:
+    data = load_legal_rag()
+    sectors: dict[str, LoadedSector] = data["sectors"]
+    scored = _score_sector_candidates(question, sectors)
+    routes: list[dict[str, Any]] = []
+
+    if preferred_sector and preferred_sector in sectors:
+        routes.append(_sector_route_payload(sectors[preferred_sector], 1.0, "explicit"))
+
+    for score, sector in scored:
+        if any(route["sector"] == sector.slug for route in routes):
+            continue
+        if score <= 0:
+            continue
+        confidence = min(0.95, 0.45 + score * 0.07)
+        routes.append(_sector_route_payload(sector, confidence, "keyword_merge"))
+        if len(routes) >= max(1, max_sectors):
+            break
+
+    if not routes:
+        routes.append(route_legal_sector(question, preferred_sector))
+
+    return routes[: max(1, max_sectors)]
 
 
 def _sector_route_payload(sector: LoadedSector, confidence: float, route_type: str) -> dict[str, Any]:
@@ -269,47 +357,81 @@ def retrieve_legal_context(
     question: str,
     sector: str | None = None,
     top_k: int = 4,
+    merge_related_sectors: bool = True,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     data = load_legal_rag()
     sectors: dict[str, LoadedSector] = data["sectors"]
-    route = route_legal_sector(question, sector)
-    selected = sectors[route["sector"]]
-
     query_counter = Counter(_tokens(question))
-    ranked: list[tuple[float, dict[str, Any]]] = []
-    for chunk, counter in zip(selected.chunks, selected.token_counters, strict=True):
-        score = _score_chunk(query_counter, counter, chunk)
-        if score > 0:
-            ranked.append((score, chunk))
+    routes = route_legal_sectors(
+        question,
+        sector,
+        max_sectors=3 if merge_related_sectors else 1,
+    )
+    if not merge_related_sectors:
+        routes = routes[:1]
 
-    ranked.sort(key=lambda item: item[0], reverse=True)
-    if not ranked:
-        ranked = [(0.01, chunk) for chunk in selected.chunks[:top_k]]
+    result_limit = max(1, min(top_k, 8))
+    per_sector_limit = max(1, min(3, math.ceil(result_limit / max(len(routes), 1))))
+    results: list[dict[str, Any]] = []
 
-    results = [
-        _chunk_result(score, chunk, query_counter)
-        for score, chunk in ranked[: max(1, min(top_k, 8))]
-    ]
+    for route in routes:
+        selected = sectors[route["sector"]]
+        ranked: list[tuple[float, dict[str, Any]]] = []
+        for chunk, counter in zip(selected.chunks, selected.token_counters, strict=True):
+            score = _score_chunk(query_counter, counter, chunk)
+            if score > 0:
+                ranked.append((score, chunk))
+
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        if not ranked:
+            ranked = [(0.01, chunk) for chunk in selected.chunks[:per_sector_limit]]
+
+        for score, chunk in ranked[:per_sector_limit]:
+            item = _chunk_result(score, chunk, query_counter)
+            item["agent_id"] = route.get("agent_id")
+            item["agent_label"] = _agent_display(route)
+            item["route_confidence"] = route.get("confidence")
+            results.append(item)
+
+    route = routes[0]
+    knowledge_graph = _knowledge_graph_subgraph(question, results, routes, data["knowledge_graph"])
     retrieval_ms = (time.perf_counter() - started) * 1000
+    intervening_agents = [
+        {
+            "agent_id": route_item.get("agent_id"),
+            "sector": route_item.get("sector"),
+            "legal_sector": route_item.get("legal_sector"),
+            "display": _agent_display(route_item),
+        }
+        for route_item in routes
+    ]
 
     return {
         "question": question,
         "route": route,
+        "merged_routes": routes,
+        "merge_strategy": "multi_agent_graph_merge" if len(routes) > 1 else "single_agent_graph",
+        "intervening_agents": intervening_agents,
+        "agent_attribution": _agent_attribution(intervening_agents),
         "results": results,
+        "knowledge_graph": knowledge_graph,
         "a2a_trace": [
             {
                 "agent": "khadamati_legal_master",
                 "role": "master_router",
-                "action": "selected_sector",
-                "target": route["agent_id"],
+                "action": "selected_multi_sector_plan" if len(routes) > 1 else "selected_sector",
+                "target": ", ".join(str(item.get("agent_id")) for item in routes),
             },
-            {
-                "agent": route["agent_id"],
-                "role": "sector_expert",
-                "action": "retrieved_rag_context",
-                "target": "legal_rag_retriever",
-            },
+            *[
+                {
+                    "agent": route_item["agent_id"],
+                    "role": "sector_expert",
+                    "action": "retrieved_knowledge_graph_context",
+                    "target": "legal_kg_retriever",
+                }
+                for route_item in routes
+            ],
         ],
         "retrieval_ms": round(retrieval_ms, 2),
     }
@@ -397,6 +519,107 @@ def _chunk_result(score: float, chunk: dict[str, Any], query: Counter[str]) -> d
     }
 
 
+def _agent_attribution(intervening_agents: list[dict[str, Any]]) -> str:
+    displays = [str(item.get("display") or item.get("agent_id")) for item in intervening_agents if item]
+    if not displays:
+        return "According to the Khadamati legal expert agent"
+    if len(displays) == 1:
+        return f"According to the {displays[0]}"
+    return "According to the merged view of " + ", ".join(displays[:-1]) + f", and {displays[-1]}"
+
+
+def _knowledge_graph_subgraph(
+    question: str,
+    results: list[dict[str, Any]],
+    routes: list[dict[str, Any]],
+    graph: dict[str, Any],
+) -> dict[str, Any]:
+    nodes_by_id: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, str]] = []
+    paths: list[dict[str, Any]] = []
+    all_nodes = graph.get("nodes", {})
+    all_edges = graph.get("edges", [])
+
+    def add_node(node_id: str, fallback: dict[str, Any]) -> None:
+        node = all_nodes.get(node_id) or fallback
+        nodes_by_id[node_id] = dict(node)
+
+    for route in routes:
+        sector_id = f"sector:{route.get('sector')}"
+        add_node(
+            sector_id,
+            {
+                "id": sector_id,
+                "kind": "sector",
+                "label": route.get("legal_sector") or route.get("sector"),
+                "agent_id": route.get("agent_id"),
+            },
+        )
+
+    result_chunk_ids = {f"chunk:{item.get('chunk_id')}" for item in results if item.get("chunk_id")}
+    article_ids = {
+        f"article:{article}"
+        for item in results
+        for article in ([item.get("primary_article")] + list(item.get("article_refs") or []))
+        if article
+    }
+    for article_id in article_ids:
+        add_node(article_id, {"id": article_id, "kind": "article", "label": article_id.removeprefix("article:")})
+
+    for item in results:
+        chunk_id = str(item.get("chunk_id") or "")
+        if not chunk_id:
+            continue
+        chunk_node_id = f"chunk:{chunk_id}"
+        add_node(
+            chunk_node_id,
+            {
+                "id": chunk_node_id,
+                "kind": "chunk",
+                "label": chunk_id,
+                "sector": item.get("sector"),
+                "pages": [item.get("page_start"), item.get("page_end")],
+            },
+        )
+        if item.get("primary_article"):
+            article_id = f"article:{item['primary_article']}"
+            add_node(
+                article_id,
+                {
+                    "id": article_id,
+                    "kind": "article",
+                    "label": item["primary_article"],
+                    "sector": item.get("sector"),
+                },
+            )
+            paths.append(
+                {
+                    "agent": item.get("agent_id"),
+                    "sector": item.get("sector"),
+                    "article": item.get("primary_article"),
+                    "chunk_id": chunk_id,
+                    "pages": [item.get("page_start"), item.get("page_end")],
+                }
+            )
+
+    wanted_nodes = set(nodes_by_id) | result_chunk_ids | article_ids
+    for edge in all_edges:
+        if edge.get("from") in wanted_nodes and edge.get("to") in wanted_nodes:
+            edges.append(edge)
+            if len(edges) >= 32:
+                break
+
+    return {
+        "mode": "article_sector_chunk_graph",
+        "query": question,
+        "node_count": len(nodes_by_id),
+        "edge_count": len(edges),
+        "nodes": list(nodes_by_id.values())[:24],
+        "edges": edges,
+        "paths": paths[:8],
+    }
+
+
 def build_legal_answer_prompt(question: str, retrieval: dict[str, Any]) -> tuple[str, str]:
     context_blocks = []
     for index, item in enumerate(retrieval.get("results", []), start=1):
@@ -405,6 +628,7 @@ def build_legal_answer_prompt(question: str, retrieval: dict[str, Any]) -> tuple
                 [
                     f"Source {index}: {item['chunk_id']}",
                     f"Sector: {item['legal_sector']}",
+                    f"Agent: {item.get('agent_label') or item.get('agent_id') or 'unknown'}",
                     f"Pages: {item['page_start']}-{item['page_end']}",
                     f"Nearest article: {item.get('primary_article') or 'not detected'}",
                     f"Articles: {', '.join(item['article_refs']) if item['article_refs'] else 'not detected'}",
@@ -412,16 +636,29 @@ def build_legal_answer_prompt(question: str, retrieval: dict[str, Any]) -> tuple
                 ]
             )
         )
+    kg_paths = retrieval.get("knowledge_graph", {}).get("paths", [])
+    kg_block = "\n".join(
+        f"- {item.get('agent')} -> {item.get('article')} -> {item.get('chunk_id')} pages {item.get('pages')}"
+        for item in kg_paths
+    )
 
     system_instruction = """
 You are Khadamati, a Moroccan first-line legal and bureaucracy hotline assistant.
 Use only the provided retrieved legal context for legal claims.
 Answer in concise Moroccan Darija if the user uses Darija, otherwise use simple French.
+Mention which expert agent intervened before the legal answer.
 Start with the nearest detected article/fasl/madda when present.
 If several articles are present, say that there are several and name the nearest one first.
+If multiple sector agents were consulted, merge them explicitly and separate which point came from which agent.
 Always include a short safety note that this is legal information, not a final lawyer opinion.
 Mention article, source chunk IDs, and pages compactly.
 If context is weak or outside scope, say that clearly and ask one next question.
 """.strip()
-    prompt = f"Question:\n{question}\n\nRetrieved context:\n\n" + "\n\n".join(context_blocks)
+    prompt = (
+        f"Question:\n{question}\n\n"
+        f"Agent attribution:\n{retrieval.get('agent_attribution')}\n\n"
+        f"Knowledge graph paths:\n{kg_block or 'No graph path detected'}\n\n"
+        "Retrieved context:\n\n"
+        + "\n\n".join(context_blocks)
+    )
     return system_instruction, prompt

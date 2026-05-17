@@ -86,7 +86,12 @@ Keep MCP enabled for the LiveKit agent with:
 ```text
 MCP_ENABLED=true
 MCP_SERVERS_FILE=/app/config/mcp.servers.json
+LIVEKIT_MIN_ENDPOINTING_DELAY=0.2
+LIVEKIT_MAX_ENDPOINTING_DELAY=0.9
+LIVEKIT_MAX_TOOL_STEPS=4
 ```
+
+Gemini Live is configured with interrupt-style tool response scheduling so the agent can speak as soon as a tool result is ready.
 
 Backend MCP-style tools:
 

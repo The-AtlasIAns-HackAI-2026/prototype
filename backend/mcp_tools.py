@@ -102,6 +102,7 @@ async def _legal_rag_retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         question=str(payload.get("question") or payload.get("message") or ""),
         sector=str(payload.get("sector") or "") or None,
         top_k=int(payload.get("top_k") or 4),
+        merge_related_sectors=payload.get("merge_related_sectors") is not False,
     )
 
 
@@ -120,6 +121,7 @@ async def _case_packet_build(payload: dict[str, Any]) -> dict[str, Any]:
     retrieval = retrieve_legal_context(
         question=topic,
         sector=selected_expert_id if selected_expert_id in LEGAL_RAG_SECTORS else None,
+        merge_related_sectors=payload.get("merge_related_sectors") is not False,
         top_k=int(payload.get("top_k") or 3),
     )
     first_source = (retrieval.get("results") or [{}])[0]
@@ -132,10 +134,14 @@ async def _case_packet_build(payload: dict[str, Any]) -> dict[str, Any]:
         "evidence_checklist": triage.get("evidence_checklist", []),
         "recommended_action": triage.get("recommended_action"),
         "rag_route": retrieval.get("route"),
+        "merged_routes": retrieval.get("merged_routes"),
+        "intervening_agents": retrieval.get("intervening_agents"),
+        "merge_strategy": retrieval.get("merge_strategy"),
         "primary_article": first_source.get("primary_article"),
         "article_count": first_source.get("article_count"),
         "chunk_id": first_source.get("chunk_id"),
         "pages": [first_source.get("page_start"), first_source.get("page_end")],
+        "knowledge_graph": retrieval.get("knowledge_graph"),
         "a2a_trace": retrieval.get("a2a_trace"),
     }
 
@@ -207,6 +213,7 @@ registry.register(
                 "question": {"type": "string"},
                 "sector": {"type": "string"},
                 "top_k": {"type": "integer"},
+                "merge_related_sectors": {"type": "boolean"},
             },
             "required": ["question"],
         },
@@ -227,6 +234,7 @@ registry.register(
                 "caller_phone": {"type": "string"},
                 "city": {"type": "string"},
                 "top_k": {"type": "integer"},
+                "merge_related_sectors": {"type": "boolean"},
             },
             "required": ["topic"],
         },

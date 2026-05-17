@@ -1,6 +1,6 @@
 # Khadamati
 
-Khadamati is a low-latency Moroccan legal and bureaucracy hotline for callers who may only have a basic phone line or weak mobile data. The primary production path is Twilio SIP to LiveKit, with a Gemini Live voice agent orchestrating a legal master agent, sector mini-agents, local RAG datasets, MCP-style tools, oral approval, and mock complaint execution.
+Khadamati is a low-latency Moroccan legal and bureaucracy hotline for callers who may only have a basic phone line or weak mobile data. The primary production path is Twilio SIP to LiveKit, with a Gemini Live voice agent orchestrating a legal master agent, sector mini-agents, a legal knowledge graph over the RAG datasets, MCP tools, oral approval, and mock complaint execution.
 
 The main product is now the legal hotline. Bureaucracy and complaint filing still exist, but as legal-adjacent execution flows behind explicit consent rather than as the core experience.
 
@@ -10,7 +10,7 @@ The project includes:
 - `livekit_agent/`: LiveKit Agents worker using Gemini Live, low-latency function tools, optional Google Search, and configurable MCP toolsets.
 - `frontend/`: React/Vite dashboard with the `Hotline` tab as the main demo surface.
 - `config/`: LiveKit SIP, legal hotline A2A orchestration, and MCP configuration examples.
-- `rag_datasets/`: sector-separated Moroccan legal RAG datasets generated from the uploaded PDFs.
+- `rag_datasets/`: sector-separated Moroccan legal datasets generated from the uploaded PDFs and exposed through article/chunk/sector knowledge-graph retrieval.
 - `datasets/`: placeholder JSONL datasets for execution and complaint workflows, ready to be replaced with vetted content.
 - `deploy/`: Nginx host config for the currently deployed public domain.
 
@@ -26,8 +26,9 @@ Primary inbound call flow:
 4. LiveKit SIP creates a room and dispatches the configured LiveKit agent.
 5. Gemini Live handles realtime audio input and output in the same session.
 6. The agent routes legal questions through a master-slave A2A legal orchestrator.
-7. Sector mini-agents retrieve cited context from local Moroccan legal RAG datasets.
-8. MCP-style tools handle approval, audit, and mock Chikaya execution when needed.
+7. Sector mini-agents retrieve cited context from the local Moroccan legal knowledge graph and RAG chunks.
+8. The response names which expert agent intervened, and multi-sector questions can merge several agents.
+9. MCP tools handle approval, audit, and mock Chikaya execution when needed.
 
 Fallback flows:
 
@@ -55,7 +56,7 @@ GitHub does not render TikZ directly, but this block can be copied into a LaTeX 
   \node[box, above right=of agent] (gemini) {Gemini Live\\Realtime audio};
   \node[box, right=of agent] (router) {Legal Master\\A2A router};
   \node[box, above right=of router] (experts) {Sector Mini-Agents\\family, criminal, civil};
-  \node[store, right=of experts] (rag) {Legal RAG\\chunks + embeddings};
+  \node[store, right=of experts] (rag) {Legal KG + RAG\\articles + chunks};
   \node[box, below right=of router] (executor) {Execution Agent\\mock Chikaya};
   \node[box, below=of agent] (mcp) {MCP Toolsets\\approval + execution};
   \node[box, below=of sip] (backend) {FastAPI Backend\\RAG, MCP, hotline};
@@ -110,9 +111,11 @@ The hotline engine is data-driven. `config/hotline/experts.json` defines the mas
 
 Each mini-agent has a model hint and dataset path. The current implementation routes to the right sector and retrieves cited context locally; later, each mini-agent can be backed by its own specialized model and vetted dataset without changing the LiveKit call path.
 
+For mixed legal issues, the retrieval engine can consult more than one mini-agent in the same turn. For example, a domestic violence after divorce question can merge the family-law agent and criminal-law agent, then return one graph-grounded answer with attribution for each expert path.
+
 The engine returns the selected expert, candidate experts, missing intake fields, next questions, evidence checklist, safety flags, dataset readiness, and recommended next action. Legal RAG responses also include an explicit A2A trace from `khadamati_legal_master` to the selected sector mini-agent.
 
-## Legal RAG Dataset
+## Legal Knowledge Graph
 
 The uploaded PDFs were converted into `rag_datasets/`:
 
@@ -122,14 +125,17 @@ The uploaded PDFs were converted into `rag_datasets/`:
 - `criminal-laws.pdf`: 430 criminal-law chunks.
 - `finance-project-2026.pdf`: 116 public-finance chunks.
 
-Each sector includes `pages.jsonl`, `chunks.jsonl`, `embeddings.npy`, and metadata. The phone path uses fast local retrieval with `use_llm=false` so Gemini Live can speak from retrieved context without making a second backend model call. The embeddings are kept for a later dense retrieval upgrade.
+Each sector includes `pages.jsonl`, `chunks.jsonl`, `embeddings.npy`, and metadata. On load, the backend builds an in-memory knowledge graph with sector nodes, chunk nodes, article nodes, and edges such as `IN_SECTOR` and `MENTIONS_ARTICLE`. The phone path uses fast local graph/RAG retrieval with `use_llm=false` so Gemini Live can speak from retrieved context without making a second backend model call. The embeddings are kept for a later dense retrieval upgrade.
 
-RAG responses now expose article-level anchors:
+Graph/RAG responses expose:
 
 - `primary_article`: nearest detected `الفصل` or `المادة` to the retrieved match.
 - `article_count`: how many articles/fosoul were found in that chunk.
 - `article_notice`: marks when several articles are nearby, so the voice agent can say that and name the nearest first.
-- `a2a_trace`: shows `khadamati_legal_master -> selected mini-agent -> legal_rag_retriever`.
+- `intervening_agents`: the sector expert agents consulted for this answer.
+- `merge_strategy`: `single_agent_graph` or `multi_agent_graph_merge`.
+- `knowledge_graph.paths`: compact agent -> article -> chunk/page paths used for the answer.
+- `a2a_trace`: shows `khadamati_legal_master -> selected mini-agent(s) -> legal_kg_retriever`.
 
 Example legal RAG checks:
 
@@ -143,6 +149,10 @@ curl -fsS -X POST http://127.0.0.1:7331/api/legal-rag/query \
 curl -fsS -X POST http://127.0.0.1:7331/api/legal-rag/query \
   -H 'Content-Type: application/json' \
   -d '{"question":"Chno l3o9oba dyal sari9a f lqanoun jinai?","language":"darija","top_k":3,"use_llm":false}'
+
+curl -fsS -X POST http://127.0.0.1:7331/api/legal-rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Ila kayn 3onf bin zwj w talaq, wach lmawdo3 family law ola criminal law?","language":"darija","top_k":4,"use_llm":false,"merge_related_sectors":true}'
 ```
 
 ## Mock Chikaya Execution
@@ -194,7 +204,8 @@ The production path avoids an extra STT plus TTS cascade where possible:
 - `GEMINI_THINKING_LEVEL=minimal` keeps responses short and fast.
 - The prompt asks for short spoken answers and avoids unnecessary tool calls.
 - MCP is loaded only from configured servers, so empty MCP config adds no external call overhead.
-- Legal RAG retrieval is local and can run without an extra backend LLM call.
+- Legal graph/RAG retrieval is local and can run without an extra backend LLM call.
+- Gemini Live is configured with interrupt-style tool response scheduling, so once a tool result is ready the agent can speak immediately instead of waiting for another user utterance.
 - The optional backend Gemini answer path is separate and can be slower; the phone path keeps Gemini Live in the realtime session and passes retrieved context through tools.
 
 ## Local Setup
@@ -265,6 +276,9 @@ LEGAL_RAG_DIR=/app/rag_datasets
 GOOGLE_API_KEY=
 GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
 GEMINI_THINKING_LEVEL=minimal
+LIVEKIT_MIN_ENDPOINTING_DELAY=0.2
+LIVEKIT_MAX_ENDPOINTING_DELAY=0.9
+LIVEKIT_MAX_TOOL_STEPS=4
 MCP_ENABLED=true
 MCP_SERVERS_FILE=/app/config/mcp.servers.json
 ```

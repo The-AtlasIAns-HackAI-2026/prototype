@@ -96,6 +96,7 @@ export default function HotlineLab() {
         language: "darija",
         topK: 4,
         useLlm: false,
+        mergeRelatedSectors: true,
         traceId,
       });
       setRag(data);
@@ -108,6 +109,9 @@ export default function HotlineLab() {
       );
       if (first?.primary_article) {
         addWorkflow("Article", first.primary_article, "ok", first.article_notice || "nearest");
+      }
+      if ((data.intervening_agents || []).length > 1) {
+        addWorkflow("Merged agents", data.merge_strategy, "ok", `${data.intervening_agents.length} agents`);
       }
     } catch {
       setError("Legal RAG ma jawbch daba.");
@@ -251,6 +255,14 @@ export default function HotlineLab() {
               >
                 Criminal law
               </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setLegalQuestion("Ila kayn 3onf bin zwj w talaq, wach lmawdo3 family law ola criminal law?")
+                }
+              >
+                Family + criminal
+              </button>
             </div>
             <button type="submit" disabled={loading === "rag"}>
               {loading === "rag" ? "Retrieving..." : "Ask legal RAG"}
@@ -274,6 +286,18 @@ export default function HotlineLab() {
                 </div>
               )}
               {rag.answer && <p className="answer">{rag.answer}</p>}
+              <ResultList
+                title="Expert agents"
+                items={(rag.intervening_agents || []).map(
+                  (agent) => `${agent.display} · ${agent.agent_id}`
+                )}
+              />
+              <ResultList
+                title="Knowledge graph paths"
+                items={(rag.knowledge_graph?.paths || []).map(
+                  (path) => `${path.agent} → ${path.article || "article pending"} → ${path.chunk_id}`
+                )}
+              />
               <ResultList
                 title="A2A trace"
                 items={(rag.a2a_trace || []).map((step) => `${step.agent} → ${step.target} · ${step.action}`)}
@@ -465,7 +489,7 @@ function SourceList({ items = [] }) {
           <div className="source-item" key={item.chunk_id}>
             <span>{item.primary_article || item.chunk_id}</span>
             <small>
-              {item.source_title} · pages {item.page_start}-{item.page_end} · {item.chunk_id}
+              {item.agent_label || item.sector} · {item.source_title} · pages {item.page_start}-{item.page_end} · {item.chunk_id}
             </small>
             {item.article_count > 1 && (
               <small>{item.article_count} detected articles, nearest shown first</small>
@@ -490,9 +514,16 @@ function WorkflowPanel({ workflow, rag, loading }) {
       <div className="workflow-chips">
         <span className="chip on">channel:web demo</span>
         <span className="chip on">master:khadamati_legal_master</span>
-        <span className={rag?.route?.agent_id ? "chip on" : "chip"}>{rag?.route?.agent_id || "mini-agent pending"}</span>
+        <span className={rag?.intervening_agents?.length ? "chip on" : "chip"}>
+          {rag?.intervening_agents?.length
+            ? `${rag.intervening_agents.length} expert agent${rag.intervening_agents.length > 1 ? "s" : ""}`
+            : "mini-agent pending"}
+        </span>
         <span className={rag?.results?.[0]?.primary_article ? "chip on" : "chip"}>
           {rag?.results?.[0]?.primary_article || "article pending"}
+        </span>
+        <span className={rag?.knowledge_graph?.paths?.length ? "chip on" : "chip"}>
+          {rag?.knowledge_graph?.paths?.length ? "knowledge graph linked" : "graph pending"}
         </span>
       </div>
       {workflow.length ? (
