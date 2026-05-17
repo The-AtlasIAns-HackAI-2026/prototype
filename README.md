@@ -38,28 +38,44 @@ Fallback flows:
 - `/api/legal-rag/*` provides local legal retrieval and optional backend Gemini answers.
 - `/api/hotline/*` provides legal-adjacent routing, oral approval, and mock Chikaya execution.
 
-## Architecture Diagrams
+## Architecture Diagram
 
-The diagrams below are committed as GitHub-renderable SVG assets, with TikZ sources kept beside them for reproducible PDF/PNG rendering.
+GitHub does not render TikZ directly, but this block can be copied into a LaTeX document that loads `tikz`, `positioning`, and `arrows.meta`.
 
-<p align="center">
-  <img src="docs/diagrams/architecture.svg" alt="Khadamati phone-to-legal-knowledge-graph architecture" width="920">
-</p>
+```tex
+\begin{tikzpicture}[
+  node distance=1.25cm and 1.65cm,
+  box/.style={draw, rounded corners, align=center, minimum width=3.2cm, minimum height=1.0cm},
+  store/.style={draw, cylinder, shape border rotate=90, aspect=0.25, align=center, minimum height=1.1cm},
+  arrow/.style={-{Latex[length=2mm]}, thick}
+]
+  \node[box] (caller) {Caller\\PSTN phone};
+  \node[box, right=of caller] (twilio) {Twilio\\Elastic SIP Trunk};
+  \node[box, right=of twilio] (sip) {LiveKit SIP\\Inbound trunk};
+  \node[box, right=of sip] (agent) {LiveKit Agent\\Khadamati worker};
+  \node[box, above right=of agent] (gemini) {Gemini Live\\Realtime audio};
+  \node[box, right=of agent] (router) {Legal Master\\A2A router};
+  \node[box, above right=of router] (experts) {Sector Mini-Agents\\family, criminal, civil};
+  \node[store, right=of experts] (rag) {Legal KG + RAG\\articles + chunks};
+  \node[box, below right=of router] (executor) {Execution Agent\\mock Chikaya};
+  \node[box, below=of agent] (mcp) {MCP Toolsets\\approval + execution};
+  \node[box, below=of sip] (backend) {FastAPI Backend\\RAG, MCP, hotline};
+  \node[store, below=of backend] (logs) {JSONL\\analytics logs};
+  \node[box, below=of twilio] (eleven) {ElevenLabs\\optional fallback};
 
-<p align="center">
-  <img src="docs/diagrams/knowledge-graph.svg" alt="Khadamati legal knowledge graph multi-agent merge" width="860">
-</p>
-
-Diagram sources:
-
-- `docs/diagrams/architecture.tex`
-- `docs/diagrams/knowledge-graph.tex`
-- `scripts/render_diagrams.sh`
-
-Render locally when a TikZ-capable TeX distribution is available:
-
-```bash
-./scripts/render_diagrams.sh
+  \draw[arrow] (caller) -- node[above]{call} (twilio);
+  \draw[arrow] (twilio) -- node[above]{SIP origination} (sip);
+  \draw[arrow] (sip) -- node[above]{dispatch room} (agent);
+  \draw[arrow] (agent) -- node[above]{audio in/out} (gemini);
+  \draw[arrow] (agent) -- node[above]{function tools} (router);
+  \draw[arrow] (router) -- node[above]{A2A route} (experts);
+  \draw[arrow] (experts) -- node[above]{retrieve} (rag);
+  \draw[arrow] (router) -- node[right]{consent gate} (executor);
+  \draw[arrow] (agent) -- node[right]{tools} (mcp);
+  \draw[arrow] (backend) -- node[right]{events} (logs);
+  \draw[arrow, dashed] (twilio) -- node[left]{webhook fallback} (backend);
+  \draw[arrow, dashed] (backend) -- node[below]{VOICE\_PROVIDER=elevenlabs} (eleven);
+\end{tikzpicture}
 ```
 
 ## Runtime Path
