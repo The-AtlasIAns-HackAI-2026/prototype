@@ -144,7 +144,6 @@ class LegalRAGRequest(BaseModel):
     sector: str | None = Field(default=None, max_length=80)
     top_k: int = Field(default=4, ge=1, le=8)
     use_llm: bool = True
-    merge_related_sectors: bool = True
     channel: str = Field(default="web", max_length=40)
     call_id: str | None = Field(default=None, max_length=120)
     caller_phone: str | None = Field(default=None, max_length=40)
@@ -157,7 +156,6 @@ class CasePacketRequest(BaseModel):
     first_name: str | None = Field(default=None, max_length=80)
     last_name: str | None = Field(default=None, max_length=80)
     city: str | None = Field(default=None, max_length=120)
-    merge_related_sectors: bool = True
     channel: str = Field(default="web", max_length=40)
     call_id: str | None = Field(default=None, max_length=120)
     caller_phone: str | None = Field(default=None, max_length=40)
@@ -545,11 +543,9 @@ async def run_mcp_tool(tool_name: str, request: MCPToolRunRequest) -> dict[str, 
             trace_id=request.payload.get("trace_id"),
             tool=tool_name,
             route=(result.get("route") or {}).get("sector") if isinstance(result.get("route"), dict) else None,
-            agent_id=(result.get("route") or {}).get("agent_id") if isinstance(result.get("route"), dict) else None,
-            workflow=result.get("merge_strategy"),
             article=((result.get("results") or [{}])[0] or {}).get("primary_article")
             if isinstance(result.get("results"), list)
-            else result.get("primary_article"),
+            else None,
             receipt_id=result.get("receipt_id"),
             approval_id=result.get("approval_id"),
             latency_ms=round((time.perf_counter() - started) * 1000, 2),
@@ -678,7 +674,6 @@ async def legal_rag_query(payload: LegalRAGRequest) -> dict[str, Any]:
         question=payload.question,
         sector=payload.sector,
         top_k=payload.top_k,
-        merge_related_sectors=payload.merge_related_sectors,
     )
 
     answer = ""
@@ -723,8 +718,6 @@ async def legal_rag_query(payload: LegalRAGRequest) -> dict[str, Any]:
             provider=answer_model,
             tool="legal_rag_retrieve",
             route=(retrieval.get("route") or {}).get("sector"),
-            agent_id=(retrieval.get("route") or {}).get("agent_id"),
-            workflow=retrieval.get("merge_strategy"),
             article=((retrieval.get("results") or [{}])[0] or {}).get("primary_article"),
             latency_ms=round(total_ms, 2),
         ),
@@ -751,7 +744,6 @@ async def case_packet(payload: CasePacketRequest) -> dict[str, Any]:
     retrieval = retrieve_legal_context(
         question=payload.topic,
         sector=selected_expert_id if selected_expert_id in LEGAL_RAG_SECTORS else None,
-        merge_related_sectors=payload.merge_related_sectors,
         top_k=3,
     )
     first_source = (retrieval.get("results") or [{}])[0]
@@ -770,9 +762,6 @@ async def case_packet(payload: CasePacketRequest) -> dict[str, Any]:
             "master_agent": "khadamati_legal_master",
             "selected_expert": triage.get("selected_expert"),
             "rag_route": retrieval.get("route"),
-            "merged_routes": retrieval.get("merged_routes"),
-            "intervening_agents": retrieval.get("intervening_agents"),
-            "merge_strategy": retrieval.get("merge_strategy"),
             "a2a_trace": retrieval.get("a2a_trace"),
         },
         "legal_anchor": {
@@ -781,7 +770,6 @@ async def case_packet(payload: CasePacketRequest) -> dict[str, Any]:
             "chunk_id": first_source.get("chunk_id"),
             "pages": [first_source.get("page_start"), first_source.get("page_end")],
         },
-        "knowledge_graph": retrieval.get("knowledge_graph"),
         "intake": {
             "missing_fields": triage.get("missing_fields", []),
             "next_questions": triage.get("next_questions", []),
@@ -800,8 +788,6 @@ async def case_packet(payload: CasePacketRequest) -> dict[str, Any]:
             payload,
             tool="case_packet_build",
             route=(retrieval.get("route") or {}).get("sector"),
-            agent_id=(retrieval.get("route") or {}).get("agent_id"),
-            workflow=retrieval.get("merge_strategy"),
             article=first_source.get("primary_article"),
             latency_ms=packet["latency_ms"],
         ),
@@ -884,11 +870,10 @@ def _fallback_rag_answer(question: str, retrieval: dict[str, Any], exc: Exceptio
     chunk_id = first.get("chunk_id", "source inconnue")
     page_start = first.get("page_start", "?")
     page_end = first.get("page_end", "?")
-    attribution = retrieval.get("agent_attribution") or "According to the Khadamati legal expert agent"
     excerpt = str(first.get("excerpt") or "").strip()
     short_excerpt = excerpt[:420] + ("..." if len(excerpt) > 420 else "")
     return (
-        f"{attribution}. L-model ma jawbch daba, walakin l-knowledge graph l9a source m9arba. "
+        "L-model ma jawbch daba, walakin l-RAG l9a source m9arba. "
         f"Source: {chunk_id}, pages {page_start}-{page_end}. "
         f" مقتطف: {short_excerpt} "
         "Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
@@ -898,47 +883,23 @@ def _fallback_rag_answer(question: str, retrieval: dict[str, Any], exc: Exceptio
 def _local_rag_answer(retrieval: dict[str, Any]) -> str:
     first = (retrieval.get("results") or [{}])[0]
     route = retrieval.get("route") or {}
-    attribution = retrieval.get("agent_attribution") or "According to the Khadamati legal expert agent"
-    merge_strategy = retrieval.get("merge_strategy")
-
-    def source_sentence(item: dict[str, Any], limit: int = 320) -> str:
-        chunk_id = item.get("chunk_id", "source inconnue")
-        page_start = item.get("page_start", "?")
-        page_end = item.get("page_end", "?")
-        primary_article = item.get("primary_article")
-        article_count = int(item.get("article_count") or 0)
-        agent_label = item.get("agent_label") or item.get("legal_sector") or "legal expert agent"
-        if primary_article and article_count > 1:
-            article_note = f"kaynin {article_count} articles/fosoul; l-aqrab howa {primary_article}"
-        elif primary_article:
-            article_note = f"l-aqrab source howa {primary_article}"
-        else:
-            article_note = "article ma banhach b wodo7"
-        excerpt = str(item.get("excerpt") or "").strip()
-        compact = " ".join(excerpt.split())[:limit]
-        return f"{agent_label}: {article_note}. Source {chunk_id}, pages {page_start}-{page_end}. {compact}"
-
-    if merge_strategy == "multi_agent_graph_merge":
-        seen_agents: set[str] = set()
-        merged_parts: list[str] = []
-        for item in retrieval.get("results", []):
-            agent_id = str(item.get("agent_id") or item.get("sector") or "")
-            if agent_id in seen_agents:
-                continue
-            seen_agents.add(agent_id)
-            merged_parts.append(source_sentence(item, limit=260))
-            if len(merged_parts) >= 3:
-                break
-        return (
-            f"{attribution}. Khadamati dmj had l-agents f knowledge graph. "
-            + " ".join(merged_parts)
-            + " Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
-        )
-
+    chunk_id = first.get("chunk_id", "source inconnue")
+    page_start = first.get("page_start", "?")
+    page_end = first.get("page_end", "?")
+    primary_article = first.get("primary_article")
+    article_count = int(first.get("article_count") or 0)
+    article_note = ""
+    if primary_article and article_count > 1:
+        article_note = f"Kaynin {article_count} articles/fosoul f had source; l-aqrab l-soual howa {primary_article}. "
+    elif primary_article:
+        article_note = f"L-aqrab source qanouni howa {primary_article}. "
+    excerpt = str(first.get("excerpt") or "").strip()
+    compact = " ".join(excerpt.split())[:520]
     return (
-        f"{attribution}. "
-        f"Route: {route.get('legal_sector', 'Legal KG')}. "
-        f"{source_sentence(first, limit=520)} "
+        f"Route: {route.get('legal_sector', 'Legal RAG')}. "
+        f"{article_note}"
+        f"Source {chunk_id}, pages {page_start}-{page_end}. "
+        f"{compact} "
         "Hadi ma3louma qanouniya 3amma, machi istichara niha2iya."
     )
 

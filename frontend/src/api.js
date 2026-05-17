@@ -74,7 +74,6 @@ export async function queryLegalRag(question, options = {}) {
       sector: options.sector || null,
       top_k: options.topK || 4,
       use_llm: options.useLlm ?? true,
-      merge_related_sectors: options.mergeRelatedSectors ?? true,
       ...meta,
     }),
   });
